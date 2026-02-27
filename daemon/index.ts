@@ -15,7 +15,7 @@ import {
   createProject, startProject, stopProject, restartProject,
   buildProject, deleteProject, getProjectLogs, importFromUrl,
 } from "./projects.js";
-import { runClaude } from "./claude.js";
+import { runClaude, startClaudeRun, subscribeToRun, abortRun, getActiveRuns } from "./claude.js";
 import { initRepo, cloneRepo, pushToGithub, pullFromGithub } from "./github.js";
 import { deployProject } from "./deploy.js";
 
@@ -64,12 +64,15 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Support both Bearer header and query param (for SSE/EventSource which can't set headers)
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+  const queryToken = req.query.token as string | undefined;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : queryToken;
+
+  if (!token) {
     res.status(401).json({ error: "Missing authorization header" });
     return;
   }
-  const token = authHeader.slice(7);
   if (!safeEqual(token, DASHBOARD_TOKEN)) {
     res.status(403).json({ error: "Invalid token" });
     return;
@@ -241,6 +244,143 @@ app.post("/api/projects/:name/deploy", asyncHandler("Deploy project", async (req
   res.json({ ok: true });
 }));
 
+// ── Live Log Streaming (SSE) ─────────────────────────────────────
+
+app.get("/api/projects/:name/logs/stream", (req: Request, res: Response) => {
+  // Auth check (SSE can't use custom headers from EventSource)
+  const authToken = req.headers.authorization?.slice(7) || (req.query.token as string);
+  if (!authToken || !safeEqual(authToken, DASHBOARD_TOKEN)) {
+    res.status(403).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const projectName = param(req, "name");
+  const pm2Name = `scws-${projectName}`;
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+
+  const { spawn: sp } = require("child_process");
+  const tail = sp("pm2", ["logs", pm2Name, "--raw", "--lines", "50"], {
+    env: { ...process.env, HOME: "/root" },
+  });
+
+  tail.stdout?.on("data", (chunk: Buffer) => {
+    const lines = chunk.toString().split("\n").filter((l: string) => l.trim());
+    for (const line of lines) {
+      res.write(`data: ${JSON.stringify({ type: "log", text: line })}\n\n`);
+    }
+  });
+
+  tail.stderr?.on("data", (chunk: Buffer) => {
+    const lines = chunk.toString().split("\n").filter((l: string) => l.trim());
+    for (const line of lines) {
+      res.write(`data: ${JSON.stringify({ type: "error", text: line })}\n\n`);
+    }
+  });
+
+  tail.on("close", () => {
+    try { res.end(); } catch { /* ignore */ }
+  });
+
+  req.on("close", () => {
+    tail.kill("SIGTERM");
+  });
+});
+
+// ── Global Claude Terminal ────────────────────────────────────────
+
+app.post("/api/claude/run", asyncHandler("Start Claude run", async (req, res) => {
+  const { projectName, prompt, mode, continueSession, maxTurns } = req.body;
+  if (!prompt) { res.status(400).json({ error: "prompt is required" }); return; }
+
+  let projectId: string | undefined;
+  if (projectName) {
+    const project = await storage.getProject(projectName);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    projectId = project.id;
+  }
+
+  const { runId } = await startClaudeRun({
+    projectName: projectName || undefined,
+    projectId,
+    prompt,
+    mode: mode || "build",
+    continueSession,
+    maxTurns,
+  });
+
+  res.status(201).json({ runId });
+}));
+
+app.get("/api/claude/stream/:runId", (req: Request, res: Response) => {
+  // Auth check (EventSource can't send custom headers)
+  const authToken = req.headers.authorization?.slice(7) || (req.query.token as string);
+  if (!authToken || !safeEqual(authToken, DASHBOARD_TOKEN)) {
+    res.status(403).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const runId = param(req, "runId");
+  const subscribed = subscribeToRun(runId, res);
+
+  if (!subscribed) {
+    // Run is not active — return completed run from DB
+    storage.getClaudeRun(runId).then(run => {
+      if (!run) {
+        res.status(404).json({ error: "Run not found" });
+        return;
+      }
+      // Send as SSE with replay
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      if (run.output) {
+        res.write(`data: ${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: run.output }] } })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ type: "done", status: run.status, sessionId: run.sessionId, duration: run.duration })}\n\n`);
+      res.end();
+    }).catch(() => {
+      res.status(500).json({ error: "Failed to fetch run" });
+    });
+  }
+});
+
+app.post("/api/claude/abort/:runId", asyncHandler("Abort Claude run", async (req, res) => {
+  const success = abortRun(param(req, "runId"));
+  if (!success) { res.status(404).json({ error: "No active run found" }); return; }
+  res.json({ ok: true });
+}));
+
+app.get("/api/claude/active", asyncHandler("Get active Claude runs", async (_req, res) => {
+  res.json(getActiveRuns());
+}));
+
+app.get("/api/claude/runs", asyncHandler("List all Claude runs", async (req, res) => {
+  const limit = parseInt(req.query.limit as string) || 50;
+  const offset = parseInt(req.query.offset as string) || 0;
+  const runs = await storage.listAllClaudeRuns(limit, offset);
+  res.json(runs);
+}));
+
+app.get("/api/claude/runs/:runId", asyncHandler("Get Claude run", async (req, res) => {
+  const run = await storage.getClaudeRun(param(req, "runId"));
+  if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+  res.json(run);
+}));
+
+app.get("/api/claude/sessions", asyncHandler("List Claude sessions", async (_req, res) => {
+  const sessions = await storage.listClaudeSessions();
+  res.json(sessions);
+}));
+
 // ── Import from URL ──────────────────────────────────────────────
 
 app.post("/api/import", asyncHandler("Import from URL", async (req, res) => {
@@ -292,6 +432,35 @@ app.get("/api/system", asyncHandler("System info", async (_req, res) => {
     projects: { total: projects.length, running },
     daemon: { uptime: process.uptime(), pid: process.pid, nodeVersion: process.version },
   });
+}));
+
+app.get("/api/system/pm2", asyncHandler("PM2 process list", async (_req, res) => {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
+
+  try {
+    const { stdout } = await execFileAsync("pm2", ["jlist"], {
+      timeout: 10_000,
+      env: { ...process.env, HOME: "/root" },
+    });
+    const processes = JSON.parse(stdout).map((p: Record<string, unknown>) => {
+      const env = (p.pm2_env || {}) as Record<string, unknown>;
+      const monit = (p.monit || {}) as Record<string, unknown>;
+      return {
+        name: p.name,
+        pid: env.pm_id,
+        status: env.status,
+        cpu: monit.cpu || 0,
+        memory: monit.memory || 0,
+        uptime: env.pm_uptime ? Date.now() - (env.pm_uptime as number) : 0,
+        restarts: env.restart_time || 0,
+      };
+    });
+    res.json(processes);
+  } catch {
+    res.json([]);
+  }
 }));
 
 app.get("/api/activity", asyncHandler("Get activity", async (req, res) => {

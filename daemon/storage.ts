@@ -1,4 +1,4 @@
-import { eq, desc, sql as dsql } from "drizzle-orm";
+import { eq, desc, isNotNull, sql as dsql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   projects, claudeRuns, activityLog, daemonConfig,
@@ -22,6 +22,9 @@ export interface IStorage {
   createClaudeRun(data: InsertClaudeRun): Promise<ClaudeRun>;
   getClaudeRun(id: string): Promise<ClaudeRun | undefined>;
   listClaudeRuns(projectId: string, limit?: number): Promise<ClaudeRun[]>;
+  listAllClaudeRuns(limit?: number, offset?: number): Promise<ClaudeRun[]>;
+  listClaudeSessions(): Promise<{ sessionId: string; projectName: string | null; turns: number; lastAt: Date }[]>;
+  getRunsBySession(sessionId: string): Promise<ClaudeRun[]>;
   updateClaudeRun(id: string, data: Partial<InsertClaudeRun>): Promise<ClaudeRun | undefined>;
 
   // Activity
@@ -96,6 +99,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(claudeRuns.projectId, projectId))
       .orderBy(desc(claudeRuns.createdAt))
       .limit(limit);
+  }
+
+  async listAllClaudeRuns(limit = 50, offset = 0): Promise<ClaudeRun[]> {
+    return db
+      .select()
+      .from(claudeRuns)
+      .orderBy(desc(claudeRuns.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listClaudeSessions(): Promise<{ sessionId: string; projectName: string | null; turns: number; lastAt: Date }[]> {
+    const rows = await db
+      .select({
+        sessionId: claudeRuns.sessionId,
+        projectName: claudeRuns.projectName,
+        turns: dsql<number>`COUNT(*)::int`,
+        lastAt: dsql<Date>`MAX(${claudeRuns.createdAt})`,
+      })
+      .from(claudeRuns)
+      .where(isNotNull(claudeRuns.sessionId))
+      .groupBy(claudeRuns.sessionId, claudeRuns.projectName)
+      .orderBy(dsql`MAX(${claudeRuns.createdAt}) DESC`)
+      .limit(50);
+    return rows as { sessionId: string; projectName: string | null; turns: number; lastAt: Date }[];
+  }
+
+  async getRunsBySession(sessionId: string): Promise<ClaudeRun[]> {
+    return db
+      .select()
+      .from(claudeRuns)
+      .where(eq(claudeRuns.sessionId, sessionId))
+      .orderBy(claudeRuns.createdAt);
   }
 
   async updateClaudeRun(id: string, data: Partial<InsertClaudeRun>): Promise<ClaudeRun | undefined> {

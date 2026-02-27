@@ -11,6 +11,7 @@
       --bg-card: #12121a;
       --bg-hover: #1a1a25;
       --bg-input: #0e0e16;
+      --bg-surface: #0f0f18;
       --border: #1e1e2e;
       --border-focus: #4f46e5;
       --text: #e4e4ef;
@@ -18,14 +19,16 @@
       --text-dim: #3a3a50;
       --accent: #4f46e5;
       --accent-hover: #6366f1;
+      --accent-glow: rgba(79,70,229,.25);
       --green: #22c55e;
       --red: #ef4444;
       --amber: #f59e0b;
       --blue: #3b82f6;
+      --cyan: #06b6d4;
       --radius: 8px;
       --radius-lg: 12px;
     }
-    body { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+    body { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
     a { color: var(--accent); text-decoration: none; }
 
     /* ── Layout ─────────────────────────────────── */
@@ -39,27 +42,35 @@
     .nav-item {
       display: flex; align-items: center; gap: 10px; padding: 10px 20px;
       color: var(--text-muted); cursor: pointer; font-size: 13px; transition: all .15s;
+      position: relative;
     }
     .nav-item:hover { color: var(--text); background: var(--bg-hover); }
     .nav-item.active { color: var(--accent); background: rgba(79,70,229,.08); border-right: 2px solid var(--accent); }
-    .nav-icon { width: 16px; text-align: center; }
-    .main { flex: 1; padding: 24px 32px; overflow-y: auto; max-height: 100vh; }
+    .nav-icon { width: 20px; text-align: center; font-size: 14px; }
+    .nav-badge {
+      position: absolute; right: 12px; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite;
+    }
+    .sidebar-footer { padding: 12px 20px; font-size: 10px; color: var(--text-dim); border-top: 1px solid var(--border); }
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; max-height: 100vh; }
+    .main-scroll { flex: 1; padding: 24px 32px; overflow-y: auto; }
 
     /* ── Auth Screen ───────────────────────────── */
     .auth-screen {
       display: flex; justify-content: center; align-items: center; height: 100vh;
       flex-direction: column; gap: 16px;
     }
-    .auth-screen h1 { font-size: 18px; color: var(--accent); letter-spacing: 3px; }
+    .auth-screen h1 { font-size: 24px; color: var(--accent); letter-spacing: 4px; }
+    .auth-screen .auth-sub { color: var(--text-muted); font-size: 12px; }
     .auth-screen input {
       width: 320px; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border);
       border-radius: var(--radius); color: var(--text); font-family: inherit; font-size: 13px;
     }
-    .auth-screen input:focus { outline: none; border-color: var(--border-focus); }
+    .auth-screen input:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
 
     /* ── Common ─────────────────────────────────── */
     .page { display: none; }
-    .page.active { display: block; }
+    .page.active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
     .page-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
     .subtitle { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
 
@@ -69,11 +80,14 @@
       color: var(--text); font-family: inherit; font-size: 12px; cursor: pointer; transition: all .15s;
     }
     .btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
     .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent-hover); }
     .btn-danger { border-color: var(--red); color: var(--red); }
     .btn-danger:hover { background: rgba(239,68,68,.1); }
     .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .btn-ghost { border-color: transparent; background: transparent; }
+    .btn-ghost:hover { background: var(--bg-hover); border-color: transparent; }
 
     .badge {
       display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px;
@@ -84,6 +98,7 @@
     .badge-amber { background: rgba(245,158,11,.12); color: var(--amber); }
     .badge-blue { background: rgba(59,130,246,.12); color: var(--blue); }
     .badge-dim { background: rgba(255,255,255,.04); color: var(--text-muted); }
+    .badge-accent { background: rgba(79,70,229,.12); color: var(--accent); }
 
     .card {
       background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
@@ -95,7 +110,7 @@
       width: 100%; padding: 8px 12px; background: var(--bg-input); border: 1px solid var(--border);
       border-radius: var(--radius); color: var(--text); font-family: inherit; font-size: 13px;
     }
-    .input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--border-focus); }
+    .input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
     .textarea { resize: vertical; min-height: 80px; }
     .select { cursor: pointer; }
     .form-group { margin-bottom: 12px; }
@@ -105,14 +120,20 @@
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .gap-8 { gap: 8px; }
     .gap-12 { gap: 12px; }
+    .mt-8 { margin-top: 8px; }
     .mt-12 { margin-top: 12px; }
     .mt-20 { margin-top: 20px; }
 
     /* ── Project Grid ──────────────────────────── */
     .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-    .project-card { cursor: pointer; }
+    .project-card { cursor: pointer; position: relative; }
     .project-card .name { font-size: 15px; font-weight: 600; }
     .project-card .meta { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+    .project-card .quick-actions {
+      display: none; position: absolute; bottom: 12px; right: 12px;
+      gap: 4px; align-items: center;
+    }
+    .project-card:hover .quick-actions { display: flex; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
     .status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
     .status-dot.stopped { background: var(--text-dim); }
@@ -127,13 +148,14 @@
       white-space: pre-wrap; word-break: break-all; color: var(--text-muted);
     }
 
-    /* ── Claude Panel ──────────────────────────── */
+    /* ── Mode Toggle ───────────────────────────── */
     .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
     .mode-toggle button {
       padding: 6px 16px; background: transparent; border: none; color: var(--text-muted);
       font-family: inherit; font-size: 12px; cursor: pointer; transition: all .15s;
     }
     .mode-toggle button.active { background: var(--accent); color: #fff; }
+    .mode-toggle button.active.plan-mode { background: var(--amber); color: #000; }
 
     /* ── Overlay / Modal ───────────────────────── */
     .overlay {
@@ -147,14 +169,172 @@
     }
     .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
 
+    /* ── Toast Notifications ───────────────────── */
+    #toast-container {
+      position: fixed; bottom: 20px; right: 20px; z-index: 300;
+      display: flex; flex-direction: column-reverse; gap: 8px;
+    }
+    .toast {
+      padding: 10px 16px; border-radius: var(--radius); font-size: 12px;
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,.4); max-width: 400px;
+      animation: toastIn .2s ease-out;
+    }
+    .toast.removing { animation: toastOut .2s ease-in forwards; }
+    .toast-success { border-left: 3px solid var(--green); }
+    .toast-error { border-left: 3px solid var(--red); }
+    .toast-info { border-left: 3px solid var(--blue); }
+    .toast-warning { border-left: 3px solid var(--amber); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(10px); } }
+
+    /* ── Command Palette ───────────────────────── */
+    #command-palette {
+      align-items: flex-start; padding-top: 20vh;
+    }
+    #command-palette .modal {
+      min-width: 500px; max-width: 560px; padding: 0; overflow: hidden;
+    }
+    #cmd-input {
+      width: 100%; padding: 14px 18px; background: transparent; border: none;
+      border-bottom: 1px solid var(--border); color: var(--text); font-family: inherit; font-size: 14px;
+    }
+    #cmd-input:focus { outline: none; }
+    #cmd-list { max-height: 320px; overflow-y: auto; }
+    .cmd-item {
+      padding: 10px 18px; cursor: pointer; font-size: 13px; color: var(--text-muted);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .cmd-item:hover, .cmd-item.selected { background: var(--bg-hover); color: var(--text); }
+    .cmd-item .cmd-keys { font-size: 10px; color: var(--text-dim); }
+
+    /* ── Claude Terminal ───────────────────────── */
+    .claude-terminal { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .claude-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap;
+    }
+    .claude-header-left { display: flex; align-items: center; gap: 12px; }
+    .claude-header-right { display: flex; align-items: center; gap: 8px; }
+    .claude-conversation {
+      flex: 1; overflow-y: auto; padding: 16px 0; min-height: 0;
+    }
+    .claude-msg {
+      margin-bottom: 16px; border-radius: var(--radius-lg); padding: 14px 16px;
+      border: 1px solid var(--border); position: relative;
+    }
+    .claude-msg-user {
+      background: rgba(79,70,229,.06); border-color: rgba(79,70,229,.15);
+      margin-left: 40px;
+    }
+    .claude-msg-assistant {
+      background: var(--bg-card); margin-right: 40px;
+    }
+    .claude-msg-role {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .claude-msg-role.user { color: var(--accent); }
+    .claude-msg-role.assistant { color: var(--cyan); }
+    .claude-msg-time { position: absolute; top: 14px; right: 16px; font-size: 10px; color: var(--text-dim); }
+    .claude-msg-content { font-size: 13px; line-height: 1.7; }
+    .claude-msg-content pre {
+      background: #050508; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 12px; margin: 8px 0; overflow-x: auto; font-size: 12px; line-height: 1.5;
+    }
+    .claude-msg-content code { font-family: inherit; }
+    .claude-msg-content p { margin-bottom: 6px; }
+
+    /* Tool calls */
+    .tool-call {
+      margin: 8px 0; border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .tool-call summary {
+      padding: 6px 10px; background: var(--bg-surface); cursor: pointer;
+      font-size: 11px; color: var(--text-muted); user-select: none;
+    }
+    .tool-call summary:hover { color: var(--text); }
+    .tool-call-body {
+      padding: 8px 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5;
+      background: #050508; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+    }
+
+    /* Syntax highlighting */
+    .hl-kw { color: #c792ea; }
+    .hl-str { color: #c3e88d; }
+    .hl-cmt { color: #546e7a; }
+    .hl-num { color: #f78c6c; }
+    .hl-fn { color: #82aaff; }
+    .hl-op { color: #89ddff; }
+    .diff-add { color: var(--green); }
+    .diff-del { color: var(--red); }
+
+    /* Input bar */
+    .claude-input-bar {
+      border-top: 1px solid var(--border); padding-top: 12px;
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    .claude-input-bar textarea {
+      flex: 1; min-height: 40px; max-height: 120px; padding: 10px 14px;
+      background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-family: inherit; font-size: 13px; resize: none; line-height: 1.5;
+    }
+    .claude-input-bar textarea:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+    /* Running indicator */
+    .claude-running-bar {
+      display: none; padding: 8px 0; border-top: 1px solid var(--border);
+      font-size: 12px; color: var(--text-muted); align-items: center; gap: 8px;
+    }
+    .claude-running-bar.active { display: flex; }
+    .running-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite;
+    }
+    .typing-cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink .6s step-end infinite; margin-left: 2px; vertical-align: text-bottom; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* ── Status Bar ────────────────────────────── */
+    .status-bar {
+      display: flex; align-items: center; gap: 16px; padding: 6px 32px;
+      border-top: 1px solid var(--border); font-size: 10px; color: var(--text-dim);
+      background: var(--bg-card); flex-shrink: 0;
+    }
+    .status-bar .sep { width: 1px; height: 10px; background: var(--border); }
+    .status-item { display: flex; align-items: center; gap: 4px; }
+
+    /* ── Progress Bar ──────────────────────────── */
+    .progress-bar {
+      height: 6px; border-radius: 3px; background: var(--bg-hover); overflow: hidden; width: 100%;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 3px; transition: width .3s;
+    }
+    .progress-fill.green { background: var(--green); }
+    .progress-fill.amber { background: var(--amber); }
+    .progress-fill.red { background: var(--red); }
+    .progress-fill.accent { background: var(--accent); }
+
     /* ── Activity feed ─────────────────────────── */
     .activity-item {
       display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
-      border-bottom: 1px solid rgba(255,255,255,.03); font-size: 12px;
+      border-bottom: 1px solid rgba(255,255,255,.03); font-size: 12px; cursor: pointer;
     }
+    .activity-item:hover { background: var(--bg-hover); margin: 0 -8px; padding: 8px 8px; border-radius: var(--radius); }
+    .activity-icon { width: 20px; text-align: center; font-size: 12px; }
     .activity-time { color: var(--text-dim); white-space: nowrap; min-width: 70px; }
-    .activity-action { color: var(--accent); min-width: 80px; }
-    .activity-details { color: var(--text-muted); flex: 1; }
+    .activity-action { min-width: 80px; font-weight: 600; }
+    .activity-details { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .activity-filter { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+    .activity-filter .btn { padding: 3px 10px; font-size: 10px; }
+    .activity-filter .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── PM2 Table ──────────────────────────────── */
+    .pm2-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pm2-table th { text-align: left; padding: 6px 10px; color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+    .pm2-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.03); }
+    .pm2-table tr:hover td { background: var(--bg-hover); }
 
     /* ── Responsive ────────────────────────────── */
     @media (max-width: 768px) {
@@ -162,9 +342,12 @@
       .sidebar-logo { font-size: 10px; padding: 0 8px 16px; text-align: center; }
       .nav-item span:not(.nav-icon) { display: none; }
       .nav-item { justify-content: center; padding: 10px; }
-      .main { padding: 16px; }
+      .main-scroll { padding: 16px; }
       .project-grid { grid-template-columns: 1fr; }
       .modal { min-width: unset; margin: 16px; }
+      .claude-msg-user { margin-left: 0; }
+      .claude-msg-assistant { margin-right: 0; }
+      #command-palette .modal { min-width: unset; margin: 0 16px; }
     }
   </style>
 </head>
@@ -173,7 +356,7 @@
 <!-- Auth Screen -->
 <div id="auth-screen" class="auth-screen">
   <h1>SCWS</h1>
-  <p style="color: var(--text-muted); font-size: 12px;">Self Coding Web Server</p>
+  <p class="auth-sub">Self Coding Web Server</p>
   <input type="password" id="token-input" placeholder="Enter dashboard token" autofocus>
   <div id="auth-error" style="color: var(--red); font-size: 12px; display: none;"></div>
 </div>
@@ -184,6 +367,10 @@
   <nav class="sidebar">
     <div class="sidebar-logo">SCWS</div>
     <div class="sidebar-nav">
+      <div class="nav-item" data-page="claude">
+        <span class="nav-icon">&#9672;</span> <span>Claude</span>
+        <span id="nav-claude-badge" class="nav-badge" style="display:none;"></span>
+      </div>
       <div class="nav-item active" data-page="projects">
         <span class="nav-icon">&#9633;</span> <span>Projects</span>
       </div>
@@ -194,10 +381,48 @@
         <span class="nav-icon">&#9783;</span> <span>Activity</span>
       </div>
     </div>
+    <div class="sidebar-footer">Ctrl+K commands</div>
   </nav>
 
   <!-- Main Content -->
   <div class="main">
+    <div class="main-scroll">
+
+    <!-- Claude Terminal Page -->
+    <div id="page-claude" class="page">
+      <div class="claude-terminal">
+        <div class="claude-header">
+          <div class="claude-header-left">
+            <div class="page-title" style="margin:0;">Claude Terminal</div>
+          </div>
+          <div class="claude-header-right">
+            <select id="claude-project-select" class="select" style="width:auto; min-width:140px; padding:5px 10px; font-size:11px;">
+              <option value="">System (no project)</option>
+            </select>
+            <div class="mode-toggle">
+              <button class="active" onclick="setCTMode('build', this)">Build</button>
+              <button onclick="setCTMode('plan', this)">Plan</button>
+            </div>
+            <select id="claude-session-select" class="select" style="width:auto; min-width:100px; padding:5px 10px; font-size:11px;">
+              <option value="">New Session</option>
+            </select>
+          </div>
+        </div>
+        <div id="claude-conversation" class="claude-conversation"></div>
+        <div id="claude-running-bar" class="claude-running-bar">
+          <span class="running-dot"></span>
+          <span id="claude-timer">0:00</span>
+          <span>Running...</span>
+          <span style="flex:1;"></span>
+          <button class="btn btn-sm btn-danger" onclick="abortClaudeRun()">Abort</button>
+        </div>
+        <div class="claude-input-bar">
+          <textarea id="claude-input" placeholder="Tell Claude what to build..." rows="1" onkeydown="handleClaudeKey(event)"></textarea>
+          <button class="btn btn-primary" id="claude-send-btn" onclick="sendClaudePrompt()">Send</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Projects Page -->
     <div id="page-projects" class="page active">
       <div class="flex-between">
@@ -229,6 +454,7 @@
         <div id="detail-status"></div>
         <div id="detail-framework"></div>
         <div id="detail-port"></div>
+        <a id="detail-open-link" href="#" target="_blank" style="display:none;" class="badge badge-accent">Open ↗</a>
       </div>
 
       <!-- Tabs -->
@@ -244,7 +470,10 @@
       <div id="tab-logs" class="mt-12">
         <div class="flex-between">
           <div class="subtitle">PM2 Logs</div>
-          <button class="btn btn-sm" onclick="refreshLogs()">Refresh</button>
+          <div class="flex gap-8">
+            <button class="btn btn-sm" id="live-log-btn" onclick="toggleLiveLogs()">Live</button>
+            <button class="btn btn-sm" onclick="refreshLogs()">Refresh</button>
+          </div>
         </div>
         <div id="detail-logs" class="log-viewer">No logs yet.</div>
       </div>
@@ -263,7 +492,7 @@
           <label class="form-label">Prompt</label>
           <textarea id="claude-prompt" class="textarea" rows="4" placeholder="What should Claude do?"></textarea>
         </div>
-        <button class="btn btn-primary" id="claude-run-btn" onclick="runClaude()">Run Claude</button>
+        <button class="btn btn-primary" id="claude-run-btn" onclick="runClaudeOnProject()">Run Claude</button>
         <div id="claude-output" class="log-viewer mt-12" style="display:none;"></div>
         <div class="subtitle mt-20">Run History</div>
         <div id="claude-runs"></div>
@@ -285,7 +514,7 @@
         <div class="subtitle">Deploy to production server</div>
         <div id="deploy-targets"></div>
         <div class="mt-12">
-          <button class="btn" onclick="showDeployTargetForm()">+ Add Target</button>
+          <button class="btn" onclick="showDeployTargetModal()">+ Add Target</button>
         </div>
       </div>
 
@@ -313,16 +542,61 @@
 
     <!-- System Page -->
     <div id="page-system" class="page">
-      <div class="page-title">System</div>
+      <div class="flex-between">
+        <div class="page-title">System</div>
+        <div class="flex gap-8">
+          <button class="btn btn-sm" onclick="setAutoRefresh(5)" id="ar-5">5s</button>
+          <button class="btn btn-sm" onclick="setAutoRefresh(15)" id="ar-15">15s</button>
+          <button class="btn btn-sm active" onclick="setAutoRefresh(0)" id="ar-off">Off</button>
+        </div>
+      </div>
       <div id="system-info" class="mt-12"></div>
+      <div class="subtitle mt-20">PM2 Processes</div>
+      <div id="pm2-processes" class="mt-8"></div>
     </div>
 
     <!-- Activity Page -->
     <div id="page-activity" class="page">
       <div class="page-title">Activity</div>
+      <div class="activity-filter" id="activity-filters">
+        <button class="btn btn-sm active" onclick="filterActivity('all', this)">All</button>
+        <button class="btn btn-sm" onclick="filterActivity('claude', this)">Claude</button>
+        <button class="btn btn-sm" onclick="filterActivity('deploy', this)">Deploy</button>
+        <button class="btn btn-sm" onclick="filterActivity('git', this)">Git</button>
+        <button class="btn btn-sm" onclick="filterActivity('lifecycle', this)">Lifecycle</button>
+      </div>
       <div id="activity-feed" class="mt-12"></div>
     </div>
+
+    </div><!-- end main-scroll -->
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span class="status-item" id="sb-projects"></span>
+      <span class="sep"></span>
+      <span class="status-item" id="sb-claude"></span>
+      <span class="sep"></span>
+      <span class="status-item" id="sb-memory"></span>
+      <span style="flex:1;"></span>
+      <span class="status-item" style="cursor:pointer;" onclick="openCommandPalette()">Ctrl+K</span>
+    </div>
   </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Command Palette -->
+<div id="command-palette" class="overlay">
+  <div class="modal">
+    <input id="cmd-input" type="text" placeholder="Type a command..." autocomplete="off">
+    <div id="cmd-list"></div>
+  </div>
+</div>
+
+<!-- Generic Modal -->
+<div id="generic-modal" class="overlay">
+  <div class="modal" id="generic-modal-content"></div>
 </div>
 
 <!-- GitHub Repos Modal -->
@@ -330,7 +604,7 @@
   <div class="modal" style="max-width:600px; max-height:80vh; display:flex; flex-direction:column;">
     <div class="flex-between" style="margin-bottom:12px;">
       <div class="modal-title" style="margin:0;">GitHub Repos</div>
-      <button class="btn btn-sm" onclick="hideReposModal()">Close</button>
+      <button class="btn btn-sm" onclick="hideModal('repos-modal')">Close</button>
     </div>
     <div id="repos-list" style="overflow-y:auto; flex:1;">Loading...</div>
   </div>
@@ -366,7 +640,7 @@
       </label>
     </div>
     <div class="flex gap-8 mt-12" style="justify-content: flex-end;">
-      <button class="btn" onclick="hideCreateModal()">Cancel</button>
+      <button class="btn" onclick="hideModal('create-modal')">Cancel</button>
       <button class="btn btn-primary" onclick="createProject()">Create</button>
     </div>
   </div>
@@ -377,6 +651,17 @@
 let token = localStorage.getItem("scws_token") || "";
 let currentProject = null;
 let claudeMode = "build";
+let ctMode = "build";     // Claude Terminal mode
+let ctRunId = null;        // active run ID
+let ctEventSource = null;  // active SSE connection
+let ctTimerInterval = null;
+let ctSessionId = null;    // for resume
+let ctMessages = [];       // conversation messages
+let liveLogSource = null;  // live log SSE
+let autoRefreshTimer = null;
+let activityFilter = "all";
+let allActivityItems = [];
+let projectsList = [];     // cached project list
 
 // ── API Helper ────────────────────────────────────────────────────
 async function api(path, opts = {}) {
@@ -396,6 +681,67 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ── Toast System ─────────────────────────────────────────────────
+function toast(msg, type = "info", duration = 4000) {
+  const container = document.getElementById("toast-container");
+  const el = document.createElement("div");
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.classList.add("removing");
+    setTimeout(() => el.remove(), 200);
+  }, duration);
+}
+
+// ── Modal Helpers ────────────────────────────────────────────────
+function showModal(id) { document.getElementById(id).classList.add("active"); }
+function hideModal(id) { document.getElementById(id).classList.remove("active"); }
+
+function showGenericModal({ title, fields, confirmText, onConfirm }) {
+  const el = document.getElementById("generic-modal-content");
+  let html = `<div class="modal-title">${escapeHtml(title)}</div>`;
+  fields.forEach((f, i) => {
+    html += `<div class="form-group">
+      <label class="form-label">${escapeHtml(f.label)}</label>
+      ${f.type === "textarea"
+        ? `<textarea id="gm-field-${i}" class="textarea" rows="3" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`
+        : `<input id="gm-field-${i}" class="input" type="${f.type || 'text'}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}">`
+      }
+    </div>`;
+  });
+  html += `<div class="flex gap-8 mt-12" style="justify-content:flex-end;">
+    <button class="btn" onclick="hideModal('generic-modal')">Cancel</button>
+    <button class="btn btn-primary" id="gm-confirm">${escapeHtml(confirmText || 'Confirm')}</button>
+  </div>`;
+  el.innerHTML = html;
+  showModal("generic-modal");
+  document.getElementById("gm-confirm").onclick = () => {
+    const values = fields.map((_, i) => document.getElementById(`gm-field-${i}`).value);
+    hideModal("generic-modal");
+    onConfirm(values);
+  };
+}
+
+function showConfirm(msg) {
+  return new Promise(resolve => {
+    const el = document.getElementById("generic-modal-content");
+    el.innerHTML = `
+      <div class="modal-title">Confirm</div>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">${escapeHtml(msg)}</p>
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button class="btn" onclick="hideModal('generic-modal')">Cancel</button>
+        <button class="btn btn-danger" id="gm-confirm">Confirm</button>
+      </div>`;
+    showModal("generic-modal");
+    document.getElementById("gm-confirm").onclick = () => { hideModal("generic-modal"); resolve(true); };
+    // Also resolve false on overlay click
+    document.getElementById("generic-modal").onclick = (e) => {
+      if (e.target.id === "generic-modal") { hideModal("generic-modal"); resolve(false); }
+    };
+  });
+}
+
 // ── Auth ──────────────────────────────────────────────────────────
 const authScreen = document.getElementById("auth-screen");
 const appEl = document.getElementById("app");
@@ -410,7 +756,7 @@ tokenInput.addEventListener("keydown", async (e) => {
     localStorage.setItem("scws_token", token);
     authScreen.style.display = "none";
     appEl.style.display = "flex";
-    loadProjects();
+    initApp();
   } catch {
     authError.textContent = "Invalid token";
     authError.style.display = "block";
@@ -421,73 +767,121 @@ if (token) {
   api("/api/projects").then(() => {
     authScreen.style.display = "none";
     appEl.style.display = "flex";
-    loadProjects();
+    initApp();
   }).catch(() => {
     localStorage.removeItem("scws_token");
     token = "";
   });
 }
 
+function initApp() {
+  loadProjects();
+  updateStatusBar();
+  setInterval(updateStatusBar, 15000);
+  loadClaudeSessions();
+}
+
 // ── Navigation ────────────────────────────────────────────────────
 function navigate(page, data) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-  document.querySelectorAll(".nav-item[data-page]").forEach(n => n.classList.remove("active"));
+  document.querySelectorAll(".sidebar .nav-item[data-page]").forEach(n => n.classList.remove("active"));
 
   const pageEl = document.getElementById(`page-${page}`);
-  const navEl = document.querySelector(`.nav-item[data-page="${page}"]`);
+  const navEl = document.querySelector(`.sidebar .nav-item[data-page="${page}"]`);
   if (pageEl) pageEl.classList.add("active");
   if (navEl) navEl.classList.add("active");
+
+  // Cleanup live logs when leaving project detail
+  if (page !== "project-detail" && liveLogSource) {
+    liveLogSource.close();
+    liveLogSource = null;
+  }
 
   if (page === "projects") loadProjects();
   if (page === "project-detail" && data) loadProjectDetail(data);
   if (page === "system") loadSystem();
   if (page === "activity") loadActivity();
+  if (page === "claude") {
+    populateClaudeProjectSelect();
+    document.getElementById("claude-input").focus();
+  }
 }
 
-document.querySelectorAll(".nav-item[data-page]").forEach(el => {
+document.querySelectorAll(".sidebar .nav-item[data-page]").forEach(el => {
   el.addEventListener("click", () => navigate(el.dataset.page));
 });
 
 // ── Tabs ──────────────────────────────────────────────────────────
 function switchTab(el, tabId) {
-  document.querySelectorAll("[data-tab]").forEach(t => t.classList.remove("active"));
+  el.closest(".page").querySelectorAll("[data-tab]").forEach(t => t.classList.remove("active"));
   el.classList.add("active");
   ["tab-logs", "tab-claude", "tab-github", "tab-deploy", "tab-settings"].forEach(id => {
-    document.getElementById(id).style.display = id === tabId ? "block" : "none";
+    const tabEl = document.getElementById(id);
+    if (tabEl) tabEl.style.display = id === tabId ? "block" : "none";
   });
 }
 
 // ── Projects ──────────────────────────────────────────────────────
 async function loadProjects() {
   try {
-    const projects = await api("/api/projects");
+    projectsList = await api("/api/projects");
     const grid = document.getElementById("projects-grid");
     const empty = document.getElementById("projects-empty");
 
-    if (!projects.length) {
+    if (!projectsList.length) {
       grid.innerHTML = "";
       empty.style.display = "block";
       return;
     }
     empty.style.display = "none";
 
-    grid.innerHTML = projects.map(p => {
+    grid.innerHTML = projectsList.map(p => {
       const fwColor = p.framework === 'next' ? 'green' : p.framework === 'express' ? 'blue' : 'dim';
       return `
       <div class="card project-card" onclick="navigate('project-detail', '${p.name}')">
         <div class="flex-between">
-          <div class="name"><span class="status-dot ${p.status}"></span>${p.displayName}</div>
+          <div class="name"><span class="status-dot ${p.status}"></span>${escapeHtml(p.displayName)}</div>
           <span class="badge badge-${fwColor}">${p.framework}</span>
         </div>
         <div class="meta">
           Port ${p.port} &middot; ${p.name} &middot; ${p.status}
           ${p.gitRepo ? ' &middot; git' : ''}
         </div>
+        <div class="quick-actions">
+          ${p.status === 'running'
+            ? `<button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','stop')">Stop</button>
+               <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','restart')">Restart</button>`
+            : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); quickAction('${p.name}','start')">Start</button>`}
+          <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','build')">Build</button>
+          <button class="btn btn-sm" onclick="event.stopPropagation(); navigateClaude('${p.name}')">Claude</button>
+          <a class="btn btn-sm" href="/${p.name}/" target="_blank" onclick="event.stopPropagation()">Open</a>
+        </div>
       </div>`;
     }).join("");
   } catch (err) {
     console.error("Failed to load projects:", err);
   }
+}
+
+async function quickAction(name, action) {
+  try {
+    if (action === "build") {
+      toast(`Building ${name}...`, "info");
+      await api(`/api/projects/${name}/build`, { method: "POST" });
+      toast(`${name} built successfully`, "success");
+    } else {
+      await api(`/api/projects/${name}/${action}`, { method: "POST" });
+      toast(`${name}: ${action} OK`, "success");
+    }
+    loadProjects();
+  } catch (err) {
+    toast(`Failed: ${err.message}`, "error");
+  }
+}
+
+function navigateClaude(projectName) {
+  navigate("claude");
+  document.getElementById("claude-project-select").value = projectName;
 }
 
 // ── Project Detail ────────────────────────────────────────────────
@@ -501,6 +895,10 @@ async function loadProjectDetail(name) {
     document.getElementById("detail-framework").innerHTML = `<span class="badge badge-blue">${p.framework}</span>`;
     document.getElementById("detail-port").innerHTML = `<span class="badge badge-dim">:${p.port}</span>`;
 
+    const openLink = document.getElementById("detail-open-link");
+    openLink.href = `/${p.name}/`;
+    openLink.style.display = "inline-block";
+
     const actions = document.getElementById("detail-actions");
     actions.innerHTML = `
       <button class="btn btn-sm" onclick="buildAndRestart()">Build & Start</button>
@@ -509,24 +907,15 @@ async function loadProjectDetail(name) {
         : '<button class="btn btn-sm btn-primary" onclick="projectAction(\'start\')">Start</button>'}
     `;
 
-    // Settings
     document.getElementById("setting-build-cmd").value = p.buildCommand || "";
     document.getElementById("setting-entry-file").value = p.entryFile || "";
     document.getElementById("setting-env-vars").value = p.envVars || "{}";
-
-    // GitHub
     document.getElementById("github-repo-info").textContent = p.gitRepo ? `Repo: ${p.gitRepo}` : "No repo linked.";
-
-    // Deploy targets
     renderDeployTargets(p);
-
-    // Load logs
     refreshLogs();
-
-    // Load Claude runs
     loadClaudeRuns();
   } catch (err) {
-    console.error("Failed to load project:", err);
+    toast(`Failed to load project: ${err.message}`, "error");
   }
 }
 
@@ -534,9 +923,10 @@ async function projectAction(action) {
   if (!currentProject) return;
   try {
     await api(`/api/projects/${currentProject.name}/${action}`, { method: "POST" });
+    toast(`${currentProject.name}: ${action} OK`, "success");
     loadProjectDetail(currentProject.name);
   } catch (err) {
-    alert(`Failed: ${err.message}`);
+    toast(`Failed: ${err.message}`, "error");
   }
 }
 
@@ -544,11 +934,13 @@ async function buildAndRestart() {
   if (!currentProject) return;
   try {
     document.getElementById("detail-status").innerHTML = '<span class="badge badge-amber">building</span>';
+    toast("Building...", "info");
     await api(`/api/projects/${currentProject.name}/build`, { method: "POST" });
     await api(`/api/projects/${currentProject.name}/start`, { method: "POST" });
+    toast("Build & start complete", "success");
     loadProjectDetail(currentProject.name);
   } catch (err) {
-    alert(`Build failed: ${err.message}`);
+    toast(`Build failed: ${err.message}`, "error");
     loadProjectDetail(currentProject.name);
   }
 }
@@ -557,10 +949,40 @@ async function refreshLogs() {
   if (!currentProject) return;
   try {
     const data = await api(`/api/projects/${currentProject.name}/logs?lines=100`);
-    document.getElementById("detail-logs").textContent = data.logs || "No logs.";
     const logViewer = document.getElementById("detail-logs");
+    logViewer.textContent = data.logs || "No logs.";
     logViewer.scrollTop = logViewer.scrollHeight;
   } catch { /* ignore */ }
+}
+
+// ── Live Log Streaming ────────────────────────────────────────────
+function toggleLiveLogs() {
+  const btn = document.getElementById("live-log-btn");
+  if (liveLogSource) {
+    liveLogSource.close();
+    liveLogSource = null;
+    btn.classList.remove("btn-primary");
+    btn.textContent = "Live";
+    return;
+  }
+  if (!currentProject) return;
+  btn.classList.add("btn-primary");
+  btn.textContent = "Live ●";
+  const logViewer = document.getElementById("detail-logs");
+  liveLogSource = new EventSource(`/api/projects/${currentProject.name}/logs/stream?token=${encodeURIComponent(token)}`);
+  liveLogSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      logViewer.textContent += data.text + "\n";
+      logViewer.scrollTop = logViewer.scrollHeight;
+    } catch { /* ignore */ }
+  };
+  liveLogSource.onerror = () => {
+    liveLogSource.close();
+    liveLogSource = null;
+    btn.classList.remove("btn-primary");
+    btn.textContent = "Live";
+  };
 }
 
 async function saveProjectSettings() {
@@ -574,26 +996,27 @@ async function saveProjectSettings() {
         envVars: document.getElementById("setting-env-vars").value || "{}",
       },
     });
-    alert("Settings saved");
+    toast("Settings saved", "success");
   } catch (err) {
-    alert(`Failed: ${err.message}`);
+    toast(`Failed: ${err.message}`, "error");
   }
 }
 
 async function confirmDeleteProject() {
   if (!currentProject) return;
-  if (!confirm(`Delete project "${currentProject.name}"? This removes all files and the database.`)) return;
+  const ok = await showConfirm(`Delete project "${currentProject.name}"? This removes all files and the database.`);
+  if (!ok) return;
   try {
     await api(`/api/projects/${currentProject.name}`, { method: "DELETE" });
+    toast(`Deleted ${currentProject.name}`, "success");
     navigate("projects");
   } catch (err) {
-    alert(`Failed: ${err.message}`);
+    toast(`Failed: ${err.message}`, "error");
   }
 }
 
 // ── Create Project ────────────────────────────────────────────────
-function showCreateModal() { document.getElementById("create-modal").classList.add("active"); }
-function hideCreateModal() { document.getElementById("create-modal").classList.remove("active"); }
+function showCreateModal() { showModal("create-modal"); }
 
 async function createProject() {
   const name = document.getElementById("create-name").value.trim();
@@ -602,28 +1025,29 @@ async function createProject() {
   const gitRepo = document.getElementById("create-git").value.trim();
   const needsDb = document.getElementById("create-db").checked;
 
-  if (!name) { alert("Name is required"); return; }
+  if (!name) { toast("Name is required", "warning"); return; }
 
   try {
     await api("/api/projects", {
       method: "POST",
       body: { name, displayName, framework, gitRepo: gitRepo || undefined, needsDb },
     });
-    hideCreateModal();
+    hideModal("create-modal");
+    toast(`Created "${name}"`, "success");
     loadProjects();
   } catch (err) {
-    alert(`Failed: ${err.message}`);
+    toast(`Failed: ${err.message}`, "error");
   }
 }
 
-// ── Claude ────────────────────────────────────────────────────────
+// ── Claude (Project Tab) ─────────────────────────────────────────
 function setClaudeMode(mode, btn) {
   claudeMode = mode;
   btn.parentElement.querySelectorAll("button").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
 }
 
-async function runClaude() {
+async function runClaudeOnProject() {
   if (!currentProject) return;
   const prompt = document.getElementById("claude-prompt").value.trim();
   if (!prompt) return;
@@ -636,18 +1060,43 @@ async function runClaude() {
   outputEl.textContent = "Claude is working...";
 
   try {
-    const result = await api(`/api/projects/${currentProject.name}/claude`, {
+    const { runId } = await api("/api/claude/run", {
       method: "POST",
-      body: { prompt, mode: claudeMode },
+      body: { projectName: currentProject.name, prompt, mode: claudeMode },
     });
-    outputEl.textContent = result.output || "Done (no output)";
-    document.getElementById("claude-prompt").value = "";
-    loadClaudeRuns();
+    // Stream output
+    const es = new EventSource(`/api/claude/stream/${runId}?token=${encodeURIComponent(token)}`);
+    outputEl.textContent = "";
+    es.onmessage = (e) => {
+      try {
+        const obj = JSON.parse(e.data);
+        if (obj.type === "assistant") {
+          const content = obj.message?.content || [];
+          for (const block of content) {
+            if (block.type === "text") outputEl.textContent += block.text;
+          }
+        } else if (obj.type === "result") {
+          if (obj.result && !outputEl.textContent) outputEl.textContent = obj.result;
+        } else if (obj.type === "done") {
+          es.close();
+          runBtn.disabled = false;
+          runBtn.textContent = "Run Claude";
+          document.getElementById("claude-prompt").value = "";
+          loadClaudeRuns();
+          toast(`Claude ${obj.status} (${Math.round((obj.duration || 0) / 1000)}s)`, obj.status === "completed" ? "success" : "error");
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    es.onerror = () => {
+      es.close();
+      runBtn.disabled = false;
+      runBtn.textContent = "Run Claude";
+    };
   } catch (err) {
     outputEl.textContent = `Error: ${err.message}`;
-  } finally {
     runBtn.disabled = false;
     runBtn.textContent = "Run Claude";
+    toast(`Claude failed: ${err.message}`, "error");
   }
 }
 
@@ -671,33 +1120,278 @@ async function loadClaudeRuns() {
   } catch { /* ignore */ }
 }
 
+// ── Claude Terminal (Hero Page) ──────────────────────────────────
+function populateClaudeProjectSelect() {
+  const sel = document.getElementById("claude-project-select");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">System (no project)</option>';
+  projectsList.forEach(p => {
+    sel.innerHTML += `<option value="${p.name}"${p.name === current ? ' selected' : ''}>${escapeHtml(p.displayName)} (${p.name})</option>`;
+  });
+}
+
+async function loadClaudeSessions() {
+  try {
+    const sessions = await api("/api/claude/sessions");
+    const sel = document.getElementById("claude-session-select");
+    sel.innerHTML = '<option value="">New Session</option>';
+    sessions.forEach(s => {
+      const date = new Date(s.lastAt).toLocaleDateString();
+      sel.innerHTML += `<option value="${s.sessionId}">${escapeHtml(s.projectName || 'system')} (${s.turns} turns, ${date})</option>`;
+    });
+  } catch { /* ignore */ }
+}
+
+function setCTMode(mode, btn) {
+  ctMode = mode;
+  btn.parentElement.querySelectorAll("button").forEach(b => {
+    b.classList.remove("active", "plan-mode");
+  });
+  btn.classList.add("active");
+  if (mode === "plan") btn.classList.add("plan-mode");
+}
+
+function handleClaudeKey(e) {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    sendClaudePrompt();
+  }
+  // Auto-resize
+  const ta = e.target;
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+}
+
+async function sendClaudePrompt() {
+  const input = document.getElementById("claude-input");
+  const prompt = input.value.trim();
+  if (!prompt || ctRunId) return;
+
+  const projectName = document.getElementById("claude-project-select").value || undefined;
+  const continueSession = document.getElementById("claude-session-select").value || undefined;
+
+  // Add user message to conversation
+  ctMessages.push({ role: "user", text: prompt, time: new Date() });
+  renderConversation();
+  input.value = "";
+  input.style.height = "auto";
+
+  try {
+    const { runId } = await api("/api/claude/run", {
+      method: "POST",
+      body: { projectName, prompt, mode: ctMode, continueSession },
+    });
+
+    ctRunId = runId;
+    showRunningState(true);
+
+    // Add assistant placeholder
+    ctMessages.push({ role: "assistant", text: "", time: new Date(), tools: [], runId });
+    renderConversation();
+
+    // Connect SSE
+    ctEventSource = new EventSource(`/api/claude/stream/${runId}?token=${encodeURIComponent(token)}`);
+    ctEventSource.onmessage = (e) => {
+      try {
+        const obj = JSON.parse(e.data);
+        handleStreamEvent(obj);
+      } catch { /* ignore */ }
+    };
+    ctEventSource.onerror = () => {
+      ctEventSource.close();
+      ctEventSource = null;
+      showRunningState(false);
+      ctRunId = null;
+    };
+  } catch (err) {
+    toast(`Failed: ${err.message}`, "error");
+    ctRunId = null;
+    showRunningState(false);
+  }
+}
+
+function handleStreamEvent(obj) {
+  const lastMsg = ctMessages[ctMessages.length - 1];
+  if (!lastMsg || lastMsg.role !== "assistant") return;
+
+  switch (obj.type) {
+    case "assistant": {
+      const content = obj.message?.content || [];
+      for (const block of content) {
+        if (block.type === "text") lastMsg.text += block.text;
+      }
+      renderConversation();
+      break;
+    }
+    case "tool_use": {
+      const name = obj.tool_name || obj.name || (obj.tool && obj.tool.name) || "Tool";
+      const input = obj.tool_input || obj.input || (obj.tool && obj.tool.input) || {};
+      lastMsg.tools.push({ name, input: JSON.stringify(input, null, 2), output: "" });
+      renderConversation();
+      break;
+    }
+    case "tool_result": {
+      if (lastMsg.tools.length > 0) {
+        const tool = lastMsg.tools[lastMsg.tools.length - 1];
+        const content = obj.content || obj.result?.output || obj.output || "";
+        tool.output = typeof content === "string" ? content : JSON.stringify(content);
+      }
+      renderConversation();
+      break;
+    }
+    case "result": {
+      if (obj.result && !lastMsg.text) lastMsg.text = obj.result;
+      if (obj.session_id) ctSessionId = obj.session_id;
+      renderConversation();
+      break;
+    }
+    case "done": {
+      if (ctEventSource) { ctEventSource.close(); ctEventSource = null; }
+      showRunningState(false);
+      lastMsg.duration = obj.duration;
+      lastMsg.status = obj.status;
+      if (obj.sessionId) ctSessionId = obj.sessionId;
+      ctRunId = null;
+      renderConversation();
+      loadClaudeSessions();
+      toast(`Claude ${obj.status} (${Math.round((obj.duration || 0) / 1000)}s)`, obj.status === "completed" ? "success" : "error");
+
+      // Update session dropdown to allow resume
+      if (ctSessionId) {
+        const sel = document.getElementById("claude-session-select");
+        if (!sel.querySelector(`option[value="${ctSessionId}"]`)) {
+          const opt = document.createElement("option");
+          opt.value = ctSessionId;
+          opt.textContent = `Current session`;
+          opt.selected = true;
+          sel.insertBefore(opt, sel.children[1]);
+        }
+      }
+      break;
+    }
+    case "error": {
+      lastMsg.text += `\n\nError: ${obj.text || "Unknown error"}`;
+      renderConversation();
+      break;
+    }
+  }
+}
+
+function renderConversation() {
+  const el = document.getElementById("claude-conversation");
+  el.innerHTML = ctMessages.map(m => {
+    if (m.role === "user") {
+      return `<div class="claude-msg claude-msg-user">
+        <div class="claude-msg-role user">YOU</div>
+        <div class="claude-msg-time">${formatTime(m.time)}</div>
+        <div class="claude-msg-content">${escapeHtml(m.text)}</div>
+      </div>`;
+    }
+    // Assistant
+    let content = renderMarkdown(m.text);
+    if (ctRunId && m.runId === ctRunId && m.text) {
+      content += '<span class="typing-cursor"></span>';
+    }
+    let toolsHtml = "";
+    if (m.tools && m.tools.length) {
+      toolsHtml = m.tools.map(t => `
+        <details class="tool-call">
+          <summary>Tool: ${escapeHtml(t.name)}</summary>
+          <div class="tool-call-body">${escapeHtml(t.output || t.input)}</div>
+        </details>`).join("");
+    }
+    const duration = m.duration ? ` (${Math.round(m.duration / 1000)}s)` : "";
+    const statusBadge = m.status ? ` <span class="badge badge-${m.status === 'completed' ? 'green' : 'red'}" style="font-size:9px;">${m.status}</span>` : "";
+    return `<div class="claude-msg claude-msg-assistant">
+      <div class="claude-msg-role assistant">CLAUDE${statusBadge}</div>
+      <div class="claude-msg-time">${formatTime(m.time)}${duration}</div>
+      <div class="claude-msg-content">${content}</div>
+      ${toolsHtml}
+    </div>`;
+  }).join("");
+
+  // Auto-scroll
+  el.scrollTop = el.scrollHeight;
+}
+
+function showRunningState(running) {
+  const bar = document.getElementById("claude-running-bar");
+  const sendBtn = document.getElementById("claude-send-btn");
+  const input = document.getElementById("claude-input");
+
+  if (running) {
+    bar.classList.add("active");
+    sendBtn.disabled = true;
+    input.disabled = true;
+    document.getElementById("nav-claude-badge").style.display = "block";
+    // Start timer
+    const start = Date.now();
+    ctTimerInterval = setInterval(() => {
+      const sec = Math.floor((Date.now() - start) / 1000);
+      document.getElementById("claude-timer").textContent = `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, "0")}`;
+    }, 1000);
+  } else {
+    bar.classList.remove("active");
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+    document.getElementById("nav-claude-badge").style.display = "none";
+    if (ctTimerInterval) { clearInterval(ctTimerInterval); ctTimerInterval = null; }
+  }
+}
+
+async function abortClaudeRun() {
+  if (!ctRunId) return;
+  try {
+    await api(`/api/claude/abort/${ctRunId}`, { method: "POST" });
+    toast("Aborting Claude run...", "warning");
+  } catch (err) {
+    toast(`Abort failed: ${err.message}`, "error");
+  }
+}
+
 // ── GitHub ────────────────────────────────────────────────────────
 async function githubInit() {
   if (!currentProject) return;
-  const repoName = prompt("Repository name:", currentProject.name);
-  if (!repoName) return;
-  try {
-    await api(`/api/projects/${currentProject.name}/github/init`, { method: "POST", body: { repoName, isPrivate: true } });
-    loadProjectDetail(currentProject.name);
-  } catch (err) { alert(`Failed: ${err.message}`); }
+  showGenericModal({
+    title: "Initialize Repository",
+    fields: [
+      { label: "Repository name", value: currentProject.name },
+    ],
+    confirmText: "Create",
+    onConfirm: async ([repoName]) => {
+      try {
+        await api(`/api/projects/${currentProject.name}/github/init`, { method: "POST", body: { repoName, isPrivate: true } });
+        toast("Repo created", "success");
+        loadProjectDetail(currentProject.name);
+      } catch (err) { toast(`Failed: ${err.message}`, "error"); }
+    },
+  });
 }
 
 async function githubPush() {
   if (!currentProject) return;
-  const msg = prompt("Commit message:", "Update from SCWS");
-  if (!msg) return;
-  try {
-    await api(`/api/projects/${currentProject.name}/github/push`, { method: "POST", body: { message: msg } });
-    alert("Pushed to GitHub");
-  } catch (err) { alert(`Failed: ${err.message}`); }
+  showGenericModal({
+    title: "Push to GitHub",
+    fields: [
+      { label: "Commit message", value: "Update from SCWS" },
+    ],
+    confirmText: "Push",
+    onConfirm: async ([msg]) => {
+      try {
+        await api(`/api/projects/${currentProject.name}/github/push`, { method: "POST", body: { message: msg } });
+        toast("Pushed to GitHub", "success");
+      } catch (err) { toast(`Failed: ${err.message}`, "error"); }
+    },
+  });
 }
 
 async function githubPull() {
   if (!currentProject) return;
   try {
     await api(`/api/projects/${currentProject.name}/github/pull`, { method: "POST" });
-    alert("Pulled from GitHub");
-  } catch (err) { alert(`Failed: ${err.message}`); }
+    toast("Pulled from GitHub", "success");
+  } catch (err) { toast(`Failed: ${err.message}`, "error"); }
 }
 
 // ── Deploy ────────────────────────────────────────────────────────
@@ -711,11 +1405,11 @@ function renderDeployTargets(p) {
   el.innerHTML = targets.map(t => `
     <div class="card" style="padding:10px;">
       <div class="flex-between">
-        <span style="font-weight:600;">${t.name}</span>
-        <button class="btn btn-sm btn-primary" onclick="doDeploy('${t.name}')">Deploy</button>
+        <span style="font-weight:600;">${escapeHtml(t.name)}</span>
+        <button class="btn btn-sm btn-primary" onclick="doDeploy('${escapeHtml(t.name)}')">Deploy</button>
       </div>
       <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
-        ${t.user}@${t.host}:${t.remotePath}
+        ${escapeHtml(t.user)}@${escapeHtml(t.host)}:${escapeHtml(t.remotePath)}
       </div>
     </div>
   `).join("");
@@ -723,96 +1417,212 @@ function renderDeployTargets(p) {
 
 async function doDeploy(targetName) {
   if (!currentProject) return;
-  if (!confirm(`Deploy "${currentProject.name}" to ${targetName}?`)) return;
+  const ok = await showConfirm(`Deploy "${currentProject.name}" to ${targetName}?`);
+  if (!ok) return;
   try {
+    toast("Deploying...", "info");
     await api(`/api/projects/${currentProject.name}/deploy`, { method: "POST", body: { targetName } });
-    alert("Deploy complete!");
-  } catch (err) { alert(`Deploy failed: ${err.message}`); }
+    toast("Deploy complete!", "success");
+  } catch (err) { toast(`Deploy failed: ${err.message}`, "error"); }
 }
 
-function showDeployTargetForm() {
-  const name = prompt("Target name (e.g., production):");
-  if (!name) return;
-  const host = prompt("Host (IP or domain):");
-  if (!host) return;
-  const user = prompt("SSH user:", "root");
-  const remotePath = prompt("Remote path:", `/var/www/${currentProject.name}/dist/`);
-  const pm2Name = prompt("PM2 process name:", currentProject.name);
-  const preDeploy = prompt("Pre-deploy command (optional):", "");
-  const postDeploy = prompt("Post-deploy command (optional):", `pm2 restart ${pm2Name}`);
-
-  const targets = JSON.parse(currentProject.deployTargets || "[]");
-  targets.push({ name, host, user, remotePath, pm2Name, preDeploy, postDeploy });
-
-  api(`/api/projects/${currentProject.name}`, {
-    method: "PATCH",
-    body: { deployTargets: JSON.stringify(targets) },
-  }).then(() => {
-    currentProject.deployTargets = JSON.stringify(targets);
-    renderDeployTargets(currentProject);
-  }).catch(err => alert(`Failed: ${err.message}`));
+function showDeployTargetModal() {
+  showGenericModal({
+    title: "Add Deploy Target",
+    fields: [
+      { label: "Target name", placeholder: "production" },
+      { label: "Host (IP or domain)", placeholder: "144.202.75.41" },
+      { label: "SSH user", value: "root" },
+      { label: "Remote path", placeholder: `/var/www/${currentProject?.name || 'app'}/dist/` },
+      { label: "PM2 process name", value: currentProject?.name || "" },
+      { label: "Post-deploy command", placeholder: "pm2 restart app" },
+    ],
+    confirmText: "Add Target",
+    onConfirm: async ([name, host, user, remotePath, pm2Name, postDeploy]) => {
+      const targets = JSON.parse(currentProject.deployTargets || "[]");
+      targets.push({ name, host, user, remotePath, pm2Name, preDeploy: "", postDeploy });
+      try {
+        await api(`/api/projects/${currentProject.name}`, {
+          method: "PATCH",
+          body: { deployTargets: JSON.stringify(targets) },
+        });
+        currentProject.deployTargets = JSON.stringify(targets);
+        renderDeployTargets(currentProject);
+        toast("Target added", "success");
+      } catch (err) { toast(`Failed: ${err.message}`, "error"); }
+    },
+  });
 }
 
 // ── System ────────────────────────────────────────────────────────
 async function loadSystem() {
   try {
     const data = await api("/api/system");
+    const memInfo = parseMemory(data.memory);
+    const diskInfo = parseDisk(data.disk);
+
     document.getElementById("system-info").innerHTML = `
       <div class="card">
         <div style="font-weight:600; margin-bottom:8px;">Daemon</div>
         <div style="font-size:12px; color:var(--text-muted);">
           PID: ${data.daemon.pid} &middot; Node ${data.daemon.nodeVersion} &middot;
-          Uptime: ${Math.round(data.daemon.uptime)}s
+          Uptime: ${formatUptime(data.daemon.uptime)}
         </div>
       </div>
-      <div class="card">
-        <div style="font-weight:600; margin-bottom:8px;">Projects</div>
-        <div style="font-size:12px; color:var(--text-muted);">
-          Total: ${data.projects.total} &middot; Running: ${data.projects.running}
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="card">
+          <div class="flex-between" style="margin-bottom:6px;">
+            <span style="font-weight:600; font-size:13px;">Memory</span>
+            <span style="font-size:11px; color:var(--text-muted);">${memInfo.used}MB / ${memInfo.total}MB (${memInfo.pct}%)</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill ${memInfo.pct > 80 ? 'red' : memInfo.pct > 60 ? 'amber' : 'green'}" style="width:${memInfo.pct}%;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex-between" style="margin-bottom:6px;">
+            <span style="font-weight:600; font-size:13px;">Disk</span>
+            <span style="font-size:11px; color:var(--text-muted);">${diskInfo.used} / ${diskInfo.total} (${diskInfo.pct})</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill ${parseInt(diskInfo.pct) > 80 ? 'red' : parseInt(diskInfo.pct) > 60 ? 'amber' : 'accent'}" style="width:${diskInfo.pct};"></div>
+          </div>
         </div>
       </div>
-      <div class="card">
-        <div style="font-weight:600; margin-bottom:8px;">Disk</div>
-        <pre style="font-size:11px; color:var(--text-muted); white-space:pre-wrap;">${data.disk || "N/A"}</pre>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="card">
+          <div style="font-weight:600; margin-bottom:4px;">Projects</div>
+          <div style="font-size:22px; font-weight:700; color:var(--green);">${data.projects.running}</div>
+          <div style="font-size:11px; color:var(--text-muted);">running of ${data.projects.total}</div>
+        </div>
+        <div class="card">
+          <div style="font-weight:600; margin-bottom:4px;">System Uptime</div>
+          <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">${data.uptime || "N/A"}</div>
+        </div>
       </div>
-      <div class="card">
-        <div style="font-weight:600; margin-bottom:8px;">Memory</div>
-        <pre style="font-size:11px; color:var(--text-muted); white-space:pre-wrap;">${data.memory || "N/A"}</pre>
-      </div>
-      ${data.uptime ? `
-      <div class="card">
-        <div style="font-weight:600; margin-bottom:8px;">System Uptime</div>
-        <div style="font-size:12px; color:var(--text-muted);">${data.uptime}</div>
-      </div>` : ""}
     `;
+
+    // Load PM2 processes
+    loadPM2Processes();
   } catch (err) {
-    document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed to load: ${err.message}</div>`;
+    document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed: ${err.message}</div>`;
+  }
+}
+
+async function loadPM2Processes() {
+  try {
+    const procs = await api("/api/system/pm2");
+    const el = document.getElementById("pm2-processes");
+    if (!procs.length) { el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No PM2 processes.</div>'; return; }
+    el.innerHTML = `<table class="pm2-table">
+      <thead><tr><th>Name</th><th>Status</th><th>CPU</th><th>Memory</th><th>Uptime</th><th>Restarts</th></tr></thead>
+      <tbody>${procs.map(p => `
+        <tr>
+          <td style="font-weight:600;">${escapeHtml(String(p.name))}</td>
+          <td><span class="badge badge-${p.status === 'online' ? 'green' : 'red'}">${p.status}</span></td>
+          <td>${p.cpu}%</td>
+          <td>${formatBytes(p.memory)}</td>
+          <td>${formatUptime(p.uptime / 1000)}</td>
+          <td>${p.restarts}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+  } catch { /* ignore */ }
+}
+
+function parseMemory(mem) {
+  if (!mem) return { total: 0, used: 0, pct: 0 };
+  const lines = mem.split("\n");
+  const parts = lines[1]?.split(/\s+/) || [];
+  const total = parseInt(parts[1]) || 1;
+  const used = parseInt(parts[2]) || 0;
+  return { total, used, pct: Math.round(used / total * 100) };
+}
+
+function parseDisk(disk) {
+  if (!disk) return { total: "?", used: "?", pct: "0%" };
+  const lines = disk.split("\n");
+  const parts = lines[1]?.split(/\s+/) || [];
+  return { total: parts[1] || "?", used: parts[2] || "?", pct: parts[4] || "0%" };
+}
+
+let autoRefreshInterval = 0;
+function setAutoRefresh(sec) {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+  document.querySelectorAll("[id^='ar-']").forEach(b => b.classList.remove("active"));
+  if (sec === 0) {
+    document.getElementById("ar-off").classList.add("active");
+  } else {
+    document.getElementById(`ar-${sec}`).classList.add("active");
+    autoRefreshTimer = setInterval(() => loadSystem(), sec * 1000);
   }
 }
 
 // ── Activity ──────────────────────────────────────────────────────
+const activityIcons = {
+  created: { icon: "+", color: "var(--green)" },
+  started: { icon: "▶", color: "var(--green)" },
+  stopped: { icon: "■", color: "var(--text-dim)" },
+  built: { icon: "⚒", color: "var(--blue)" },
+  deployed: { icon: "🚀", color: "var(--accent)" },
+  deploy: { icon: "🚀", color: "var(--accent)" },
+  claude_run: { icon: "●", color: "var(--accent)" },
+  claude_failed: { icon: "●", color: "var(--red)" },
+  github_push: { icon: "↑", color: "var(--blue)" },
+  github_pull: { icon: "↓", color: "var(--blue)" },
+  github_init: { icon: "◎", color: "var(--blue)" },
+  deleted: { icon: "✕", color: "var(--red)" },
+  imported: { icon: "↓", color: "var(--green)" },
+};
+
+const filterGroups = {
+  all: null,
+  claude: ["claude_run", "claude_failed"],
+  deploy: ["deployed", "deploy"],
+  git: ["github_push", "github_pull", "github_init"],
+  lifecycle: ["created", "started", "stopped", "built", "deleted", "imported"],
+};
+
 async function loadActivity() {
   try {
-    const items = await api("/api/activity");
-    const el = document.getElementById("activity-feed");
-    if (!items.length) { el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No activity yet.</div>'; return; }
-    el.innerHTML = items.map(a => `
-      <div class="activity-item">
-        <span class="activity-time">${new Date(a.createdAt).toLocaleTimeString()}</span>
-        <span class="activity-action">${a.action}</span>
-        <span class="activity-details">${escapeHtml(a.details)}</span>
-      </div>
-    `).join("");
+    allActivityItems = await api("/api/activity");
+    renderActivityFeed();
   } catch (err) {
     document.getElementById("activity-feed").innerHTML = `<div style="color:var(--red);">Failed: ${err.message}</div>`;
   }
+}
+
+function filterActivity(filter, btn) {
+  activityFilter = filter;
+  document.querySelectorAll(".activity-filter .btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const el = document.getElementById("activity-feed");
+  const items = filterGroups[activityFilter]
+    ? allActivityItems.filter(a => filterGroups[activityFilter].some(f => a.action.includes(f)))
+    : allActivityItems;
+
+  if (!items.length) { el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No activity.</div>'; return; }
+  el.innerHTML = items.map(a => {
+    const ai = activityIcons[a.action] || { icon: "·", color: "var(--text-dim)" };
+    return `
+      <div class="activity-item" onclick="${a.action.includes('claude') ? `navigate('claude')` : ''}">
+        <span class="activity-icon" style="color:${ai.color};">${ai.icon}</span>
+        <span class="activity-time">${new Date(a.createdAt).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+        <span class="activity-action" style="color:${ai.color};">${a.action}</span>
+        <span class="activity-details">${escapeHtml(a.details)}</span>
+      </div>`;
+  }).join("");
 }
 
 // ── Import from URL ──────────────────────────────────────────────
 async function importFromUrl() {
   const input = document.getElementById("import-url");
   const url = input.value.trim();
-  if (!url) { alert("Paste a repo URL first"); return; }
+  if (!url) { toast("Paste a repo URL first", "warning"); return; }
 
   const btn = document.getElementById("import-btn");
   btn.disabled = true;
@@ -822,9 +1632,9 @@ async function importFromUrl() {
     const project = await api("/api/import", { method: "POST", body: { repoUrl: url } });
     input.value = "";
     loadProjects();
-    alert(`Imported "${project.name}" (${project.framework}) on port ${project.port}`);
+    toast(`Imported "${project.name}" (${project.framework}) on port ${project.port}`, "success");
   } catch (err) {
-    alert(`Import failed: ${err.message}`);
+    toast(`Import failed: ${err.message}`, "error");
   } finally {
     btn.disabled = false;
     btn.textContent = "Import";
@@ -832,8 +1642,7 @@ async function importFromUrl() {
 }
 
 // ── GitHub Repos Browser ─────────────────────────────────────────
-function showReposModal() { document.getElementById("repos-modal").classList.add("active"); loadRepos(); }
-function hideReposModal() { document.getElementById("repos-modal").classList.remove("active"); }
+function showReposModal() { showModal("repos-modal"); loadRepos(); }
 
 async function loadRepos() {
   const el = document.getElementById("repos-list");
@@ -859,16 +1668,224 @@ async function loadRepos() {
 }
 
 function importRepo(url) {
-  hideReposModal();
+  hideModal("repos-modal");
   document.getElementById("import-url").value = url;
   importFromUrl();
 }
 
+// ── Status Bar ────────────────────────────────────────────────────
+async function updateStatusBar() {
+  try {
+    const [projRes, activeRes] = await Promise.allSettled([
+      api("/api/projects"),
+      api("/api/claude/active"),
+    ]);
+
+    if (projRes.status === "fulfilled") {
+      const projects = projRes.value;
+      projectsList = projects;
+      const running = projects.filter(p => p.status === "running").length;
+      document.getElementById("sb-projects").innerHTML = `<span class="status-dot running" style="width:6px;height:6px;margin:0;"></span> ${running}/${projects.length} projects`;
+    }
+
+    if (activeRes.status === "fulfilled") {
+      const active = activeRes.value;
+      if (active.length) {
+        const r = active[0];
+        document.getElementById("sb-claude").innerHTML = `<span class="running-dot" style="width:6px;height:6px;"></span> Claude on ${r.projectName || 'system'} (${Math.round(r.elapsed / 1000)}s)`;
+        document.getElementById("nav-claude-badge").style.display = "block";
+      } else {
+        document.getElementById("sb-claude").textContent = "Claude idle";
+        if (!ctRunId) document.getElementById("nav-claude-badge").style.display = "none";
+      }
+    }
+
+    document.getElementById("sb-memory").textContent = "";
+  } catch { /* ignore */ }
+}
+
+// ── Command Palette ──────────────────────────────────────────────
+let cmdSelectedIdx = 0;
+let cmdFiltered = [];
+
+function getCommands() {
+  const cmds = [
+    { name: "Go to Claude Terminal", action: () => navigate("claude"), keys: "Ctrl+J" },
+    { name: "Go to Projects", action: () => navigate("projects"), keys: "Ctrl+1" },
+    { name: "Go to System", action: () => navigate("system"), keys: "Ctrl+2" },
+    { name: "Go to Activity", action: () => navigate("activity"), keys: "Ctrl+3" },
+    { name: "New Project", action: showCreateModal },
+  ];
+  // Dynamic project commands
+  projectsList.forEach(p => {
+    cmds.push({ name: `Start: ${p.displayName}`, action: () => quickAction(p.name, "start") });
+    cmds.push({ name: `Stop: ${p.displayName}`, action: () => quickAction(p.name, "stop") });
+    cmds.push({ name: `Build: ${p.displayName}`, action: () => quickAction(p.name, "build") });
+    cmds.push({ name: `Claude: ${p.displayName}`, action: () => navigateClaude(p.name) });
+    cmds.push({ name: `Open: ${p.displayName}`, action: () => window.open(`/${p.name}/`, "_blank") });
+  });
+  return cmds;
+}
+
+function openCommandPalette() {
+  const overlay = document.getElementById("command-palette");
+  overlay.classList.add("active");
+  const input = document.getElementById("cmd-input");
+  input.value = "";
+  input.focus();
+  cmdSelectedIdx = 0;
+  cmdFiltered = getCommands();
+  renderCommandList();
+}
+
+function closeCommandPalette() {
+  document.getElementById("command-palette").classList.remove("active");
+}
+
+function renderCommandList() {
+  const el = document.getElementById("cmd-list");
+  el.innerHTML = cmdFiltered.map((c, i) => `
+    <div class="cmd-item ${i === cmdSelectedIdx ? 'selected' : ''}" onmouseenter="cmdSelectedIdx=${i}; renderCommandList()" onclick="executeCommand(${i})">
+      <span>${escapeHtml(c.name)}</span>
+      ${c.keys ? `<span class="cmd-keys">${c.keys}</span>` : ""}
+    </div>
+  `).join("");
+}
+
+function executeCommand(idx) {
+  const cmd = cmdFiltered[idx];
+  if (cmd) {
+    closeCommandPalette();
+    cmd.action();
+  }
+}
+
+document.getElementById("cmd-input").addEventListener("input", (e) => {
+  const q = e.target.value.toLowerCase();
+  cmdFiltered = getCommands().filter(c => c.name.toLowerCase().includes(q));
+  cmdSelectedIdx = 0;
+  renderCommandList();
+});
+
+document.getElementById("cmd-input").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); cmdSelectedIdx = Math.min(cmdSelectedIdx + 1, cmdFiltered.length - 1); renderCommandList(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); cmdSelectedIdx = Math.max(cmdSelectedIdx - 1, 0); renderCommandList(); }
+  else if (e.key === "Enter") { e.preventDefault(); executeCommand(cmdSelectedIdx); }
+  else if (e.key === "Escape") { closeCommandPalette(); }
+});
+
+document.getElementById("command-palette").addEventListener("click", (e) => {
+  if (e.target.id === "command-palette") closeCommandPalette();
+});
+
+// ── Keyboard Shortcuts ───────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  // Don't trigger shortcuts when typing in inputs
+  const tag = document.activeElement?.tagName;
+  const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+  if (e.key === "Escape") {
+    // Close any open modal/palette
+    document.querySelectorAll(".overlay.active").forEach(o => o.classList.remove("active"));
+    return;
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    openCommandPalette();
+    return;
+  }
+
+  if (isInput) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "j") {
+    e.preventDefault();
+    navigate("claude");
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "1") { e.preventDefault(); navigate("projects"); }
+  if ((e.ctrlKey || e.metaKey) && e.key === "2") { e.preventDefault(); navigate("system"); }
+  if ((e.ctrlKey || e.metaKey) && e.key === "3") { e.preventDefault(); navigate("activity"); }
+});
+
+// ── Markdown-lite Renderer ───────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return "";
+  // Escape HTML first
+  let html = escapeHtml(text);
+
+  // Code blocks: ```lang\n...\n```
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const highlighted = highlightCode(code.trim(), lang);
+    return `<pre><code>${highlighted}</code></pre>`;
+  });
+
+  // Inline code: `...`
+  html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg-surface);padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>');
+
+  // Bold: **...**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Newlines to paragraphs (simple)
+  html = html.replace(/\n\n/g, "</p><p>");
+  html = html.replace(/\n/g, "<br>");
+  html = `<p>${html}</p>`;
+
+  return html;
+}
+
+function highlightCode(code, lang) {
+  // Diff highlighting
+  if (lang === "diff" || code.match(/^[+-]/m)) {
+    return code.split("\n").map(line => {
+      if (line.startsWith("+")) return `<span class="diff-add">${line}</span>`;
+      if (line.startsWith("-")) return `<span class="diff-del">${line}</span>`;
+      return line;
+    }).join("\n");
+  }
+
+  // Simple syntax highlighting
+  let html = code;
+  // Comments
+  html = html.replace(/(\/\/.*$)/gm, '<span class="hl-cmt">$1</span>');
+  // Strings
+  html = html.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="hl-str">$1</span>');
+  // Numbers
+  html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>');
+  // Keywords
+  html = html.replace(/\b(const|let|var|function|return|if|else|for|while|class|import|export|from|async|await|new|this|try|catch|throw|typeof|interface|type)\b/g, '<span class="hl-kw">$1</span>');
+
+  return html;
+}
+
 // ── Util ──────────────────────────────────────────────────────────
 function escapeHtml(s) {
+  if (!s) return "";
   const d = document.createElement("div");
-  d.textContent = s;
+  d.textContent = String(s);
   return d.innerHTML;
+}
+
+function formatTime(date) {
+  if (!date) return "";
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatUptime(seconds) {
+  if (!seconds || seconds < 0) return "0s";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return "0B";
+  if (bytes < 1024) return bytes + "B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + "KB";
+  return (bytes / (1024 * 1024)).toFixed(0) + "MB";
 }
 </script>
 

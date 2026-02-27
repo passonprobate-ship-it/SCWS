@@ -40,11 +40,14 @@ export type InsertProject = z.infer<typeof insertProjectSchema>;
 export const claudeRuns = pgTable("claude_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectId: varchar("project_id").notNull(),
+  projectName: text("project_name"),
   prompt: text("prompt").notNull(),
   output: text("output"),
   status: text("status").notNull().default("running"),
   mode: text("mode").notNull().default("build"),
   sessionId: text("session_id"),
+  turnNumber: integer("turn_number").notNull().default(1),
+  parentRunId: varchar("parent_run_id"),
   duration: integer("duration"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
