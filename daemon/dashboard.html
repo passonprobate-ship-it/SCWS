@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCWS — Self Coding Web Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0f;
+      --bg-card: #12121a;
+      --bg-hover: #1a1a25;
+      --bg-input: #0e0e16;
+      --border: #1e1e2e;
+      --border-focus: #4f46e5;
+      --text: #e4e4ef;
+      --text-muted: #6b6b80;
+      --text-dim: #3a3a50;
+      --accent: #4f46e5;
+      --accent-hover: #6366f1;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --blue: #3b82f6;
+      --radius: 8px;
+      --radius-lg: 12px;
+    }
+    body { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* ── Layout ─────────────────────────────────── */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 220px; background: var(--bg-card); border-right: 1px solid var(--border);
+      padding: 20px 0; display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .sidebar-logo { padding: 0 20px 20px; font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+    .sidebar-nav { flex: 1; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+      color: var(--text-muted); cursor: pointer; font-size: 13px; transition: all .15s;
+    }
+    .nav-item:hover { color: var(--text); background: var(--bg-hover); }
+    .nav-item.active { color: var(--accent); background: rgba(79,70,229,.08); border-right: 2px solid var(--accent); }
+    .nav-icon { width: 16px; text-align: center; }
+    .main { flex: 1; padding: 24px 32px; overflow-y: auto; max-height: 100vh; }
+
+    /* ── Auth Screen ───────────────────────────── */
+    .auth-screen {
+      display: flex; justify-content: center; align-items: center; height: 100vh;
+      flex-direction: column; gap: 16px;
+    }
+    .auth-screen h1 { font-size: 18px; color: var(--accent); letter-spacing: 3px; }
+    .auth-screen input {
+      width: 320px; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-family: inherit; font-size: 13px;
+    }
+    .auth-screen input:focus { outline: none; border-color: var(--border-focus); }
+
+    /* ── Common ─────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+    .page-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+    .subtitle { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+      border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-card);
+      color: var(--text); font-family: inherit; font-size: 12px; cursor: pointer; transition: all .15s;
+    }
+    .btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { border-color: var(--red); color: var(--red); }
+    .btn-danger:hover { background: rgba(239,68,68,.1); }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .badge-green { background: rgba(34,197,94,.12); color: var(--green); }
+    .badge-red { background: rgba(239,68,68,.12); color: var(--red); }
+    .badge-amber { background: rgba(245,158,11,.12); color: var(--amber); }
+    .badge-blue { background: rgba(59,130,246,.12); color: var(--blue); }
+    .badge-dim { background: rgba(255,255,255,.04); color: var(--text-muted); }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .card:hover { border-color: rgba(79,70,229,.3); }
+
+    .input, .textarea, .select {
+      width: 100%; padding: 8px 12px; background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-family: inherit; font-size: 13px;
+    }
+    .input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--border-focus); }
+    .textarea { resize: vertical; min-height: 80px; }
+    .select { cursor: pointer; }
+    .form-group { margin-bottom: 12px; }
+    .form-label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px; }
+
+    .flex { display: flex; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .gap-8 { gap: 8px; }
+    .gap-12 { gap: 12px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-20 { margin-top: 20px; }
+
+    /* ── Project Grid ──────────────────────────── */
+    .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+    .project-card { cursor: pointer; }
+    .project-card .name { font-size: 15px; font-weight: 600; }
+    .project-card .meta { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.stopped { background: var(--text-dim); }
+    .status-dot.building { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 1s infinite; }
+    .status-dot.error { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+    /* ── Log viewer ────────────────────────────── */
+    .log-viewer {
+      background: #050508; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; font-size: 11px; line-height: 1.6; max-height: 400px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-all; color: var(--text-muted);
+    }
+
+    /* ── Claude Panel ──────────────────────────── */
+    .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .mode-toggle button {
+      padding: 6px 16px; background: transparent; border: none; color: var(--text-muted);
+      font-family: inherit; font-size: 12px; cursor: pointer; transition: all .15s;
+    }
+    .mode-toggle button.active { background: var(--accent); color: #fff; }
+
+    /* ── Overlay / Modal ───────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+      justify-content: center; align-items: center; z-index: 100;
+    }
+    .overlay.active { display: flex; }
+    .modal {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 24px; min-width: 420px; max-width: 520px;
+    }
+    .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+    /* ── Activity feed ─────────────────────────── */
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,.03); font-size: 12px;
+    }
+    .activity-time { color: var(--text-dim); white-space: nowrap; min-width: 70px; }
+    .activity-action { color: var(--accent); min-width: 80px; }
+    .activity-details { color: var(--text-muted); flex: 1; }
+
+    /* ── Responsive ────────────────────────────── */
+    @media (max-width: 768px) {
+      .sidebar { width: 60px; }
+      .sidebar-logo { font-size: 10px; padding: 0 8px 16px; text-align: center; }
+      .nav-item span:not(.nav-icon) { display: none; }
+      .nav-item { justify-content: center; padding: 10px; }
+      .main { padding: 16px; }
+      .project-grid { grid-template-columns: 1fr; }
+      .modal { min-width: unset; margin: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="auth-screen" class="auth-screen">
+  <h1>SCWS</h1>
+  <p style="color: var(--text-muted); font-size: 12px;">Self Coding Web Server</p>
+  <input type="password" id="token-input" placeholder="Enter dashboard token" autofocus>
+  <div id="auth-error" style="color: var(--red); font-size: 12px; display: none;"></div>
+</div>
+
+<!-- Main App -->
+<div id="app" class="app" style="display: none;">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">SCWS</div>
+    <div class="sidebar-nav">
+      <div class="nav-item active" data-page="projects">
+        <span class="nav-icon">&#9633;</span> <span>Projects</span>
+      </div>
+      <div class="nav-item" data-page="system">
+        <span class="nav-icon">&#9881;</span> <span>System</span>
+      </div>
+      <div class="nav-item" data-page="activity">
+        <span class="nav-icon">&#9783;</span> <span>Activity</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main">
+    <!-- Projects Page -->
+    <div id="page-projects" class="page active">
+      <div class="flex-between">
+        <div class="page-title">Projects</div>
+        <button class="btn btn-primary" onclick="showCreateModal()">+ New Project</button>
+      </div>
+      <!-- Import Bar -->
+      <div class="card mt-12" style="padding:12px; display:flex; gap:8px; align-items:center;">
+        <input id="import-url" class="input" style="flex:1; margin:0;" placeholder="Paste a git repo URL to auto-import...">
+        <button class="btn btn-primary" id="import-btn" onclick="importFromUrl()">Import</button>
+        <button class="btn" onclick="showReposModal()">Browse Repos</button>
+      </div>
+      <div id="projects-grid" class="project-grid mt-12"></div>
+      <div id="projects-empty" style="display:none; text-align:center; padding:60px; color:var(--text-muted); font-size:13px;">
+        No projects yet. Import a repo or create one to get started.
+      </div>
+    </div>
+
+    <!-- Project Detail Page -->
+    <div id="page-project-detail" class="page">
+      <div class="flex-between">
+        <div>
+          <div style="font-size: 11px; color: var(--text-muted); cursor: pointer;" onclick="navigate('projects')">← Back to Projects</div>
+          <div class="page-title mt-12" id="detail-name"></div>
+        </div>
+        <div class="flex gap-8" id="detail-actions"></div>
+      </div>
+      <div class="flex gap-12 mt-12" style="flex-wrap:wrap;">
+        <div id="detail-status"></div>
+        <div id="detail-framework"></div>
+        <div id="detail-port"></div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-8 mt-20" style="border-bottom: 1px solid var(--border); padding-bottom: 0;">
+        <div class="nav-item active" data-tab="tab-logs" onclick="switchTab(this, 'tab-logs')" style="padding: 8px 12px;">Logs</div>
+        <div class="nav-item" data-tab="tab-claude" onclick="switchTab(this, 'tab-claude')" style="padding: 8px 12px;">Claude</div>
+        <div class="nav-item" data-tab="tab-github" onclick="switchTab(this, 'tab-github')" style="padding: 8px 12px;">GitHub</div>
+        <div class="nav-item" data-tab="tab-deploy" onclick="switchTab(this, 'tab-deploy')" style="padding: 8px 12px;">Deploy</div>
+        <div class="nav-item" data-tab="tab-settings" onclick="switchTab(this, 'tab-settings')" style="padding: 8px 12px;">Settings</div>
+      </div>
+
+      <!-- Tab: Logs -->
+      <div id="tab-logs" class="mt-12">
+        <div class="flex-between">
+          <div class="subtitle">PM2 Logs</div>
+          <button class="btn btn-sm" onclick="refreshLogs()">Refresh</button>
+        </div>
+        <div id="detail-logs" class="log-viewer">No logs yet.</div>
+      </div>
+
+      <!-- Tab: Claude -->
+      <div id="tab-claude" class="mt-12" style="display:none;">
+        <div class="subtitle">Run Claude CLI on this project</div>
+        <div class="form-group">
+          <label class="form-label">Mode</label>
+          <div class="mode-toggle">
+            <button class="active" onclick="setClaudeMode('build', this)">Build</button>
+            <button onclick="setClaudeMode('plan', this)">Plan</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prompt</label>
+          <textarea id="claude-prompt" class="textarea" rows="4" placeholder="What should Claude do?"></textarea>
+        </div>
+        <button class="btn btn-primary" id="claude-run-btn" onclick="runClaude()">Run Claude</button>
+        <div id="claude-output" class="log-viewer mt-12" style="display:none;"></div>
+        <div class="subtitle mt-20">Run History</div>
+        <div id="claude-runs"></div>
+      </div>
+
+      <!-- Tab: GitHub -->
+      <div id="tab-github" class="mt-12" style="display:none;">
+        <div class="subtitle">GitHub Integration</div>
+        <div id="github-repo-info" style="margin-bottom: 12px; font-size: 13px;"></div>
+        <div class="flex gap-8">
+          <button class="btn" onclick="githubInit()">Init Repo</button>
+          <button class="btn" onclick="githubPush()">Push</button>
+          <button class="btn" onclick="githubPull()">Pull</button>
+        </div>
+      </div>
+
+      <!-- Tab: Deploy -->
+      <div id="tab-deploy" class="mt-12" style="display:none;">
+        <div class="subtitle">Deploy to production server</div>
+        <div id="deploy-targets"></div>
+        <div class="mt-12">
+          <button class="btn" onclick="showDeployTargetForm()">+ Add Target</button>
+        </div>
+      </div>
+
+      <!-- Tab: Settings -->
+      <div id="tab-settings" class="mt-12" style="display:none;">
+        <div class="subtitle">Project Configuration</div>
+        <div class="form-group">
+          <label class="form-label">Build Command</label>
+          <input id="setting-build-cmd" class="input" placeholder="npm run build">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Entry File</label>
+          <input id="setting-entry-file" class="input" placeholder="dist/index.js">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Environment Variables (JSON)</label>
+          <textarea id="setting-env-vars" class="textarea" rows="4" placeholder='{"KEY": "value"}'></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveProjectSettings()">Save Settings</button>
+        <div class="mt-20">
+          <button class="btn btn-danger" onclick="confirmDeleteProject()">Delete Project</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Page -->
+    <div id="page-system" class="page">
+      <div class="page-title">System</div>
+      <div id="system-info" class="mt-12"></div>
+    </div>
+
+    <!-- Activity Page -->
+    <div id="page-activity" class="page">
+      <div class="page-title">Activity</div>
+      <div id="activity-feed" class="mt-12"></div>
+    </div>
+  </div>
+</div>
+
+<!-- GitHub Repos Modal -->
+<div id="repos-modal" class="overlay">
+  <div class="modal" style="max-width:600px; max-height:80vh; display:flex; flex-direction:column;">
+    <div class="flex-between" style="margin-bottom:12px;">
+      <div class="modal-title" style="margin:0;">GitHub Repos</div>
+      <button class="btn btn-sm" onclick="hideReposModal()">Close</button>
+    </div>
+    <div id="repos-list" style="overflow-y:auto; flex:1;">Loading...</div>
+  </div>
+</div>
+
+<!-- Create Project Modal -->
+<div id="create-modal" class="overlay">
+  <div class="modal">
+    <div class="modal-title">New Project</div>
+    <div class="form-group">
+      <label class="form-label">Name (URL slug)</label>
+      <input id="create-name" class="input" placeholder="my-project">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Display Name</label>
+      <input id="create-display" class="input" placeholder="My Project">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Framework</label>
+      <select id="create-framework" class="select">
+        <option value="express">Express (Node.js)</option>
+        <option value="next">Next.js</option>
+        <option value="static">Static Site</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Git Repo URL (optional)</label>
+      <input id="create-git" class="input" placeholder="https://github.com/...">
+    </div>
+    <div class="form-group">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; color:var(--text-muted);">
+        <input type="checkbox" id="create-db"> Create PostgreSQL database
+      </label>
+    </div>
+    <div class="flex gap-8 mt-12" style="justify-content: flex-end;">
+      <button class="btn" onclick="hideCreateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────
+let token = localStorage.getItem("scws_token") || "";
+let currentProject = null;
+let claudeMode = "build";
+
+// ── API Helper ────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      ...(opts.headers || {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
+const authScreen = document.getElementById("auth-screen");
+const appEl = document.getElementById("app");
+const tokenInput = document.getElementById("token-input");
+const authError = document.getElementById("auth-error");
+
+tokenInput.addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  token = tokenInput.value.trim();
+  try {
+    await api("/api/projects");
+    localStorage.setItem("scws_token", token);
+    authScreen.style.display = "none";
+    appEl.style.display = "flex";
+    loadProjects();
+  } catch {
+    authError.textContent = "Invalid token";
+    authError.style.display = "block";
+  }
+});
+
+if (token) {
+  api("/api/projects").then(() => {
+    authScreen.style.display = "none";
+    appEl.style.display = "flex";
+    loadProjects();
+  }).catch(() => {
+    localStorage.removeItem("scws_token");
+    token = "";
+  });
+}
+
+// ── Navigation ────────────────────────────────────────────────────
+function navigate(page, data) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item[data-page]").forEach(n => n.classList.remove("active"));
+
+  const pageEl = document.getElementById(`page-${page}`);
+  const navEl = document.querySelector(`.nav-item[data-page="${page}"]`);
+  if (pageEl) pageEl.classList.add("active");
+  if (navEl) navEl.classList.add("active");
+
+  if (page === "projects") loadProjects();
+  if (page === "project-detail" && data) loadProjectDetail(data);
+  if (page === "system") loadSystem();
+  if (page === "activity") loadActivity();
+}
+
+document.querySelectorAll(".nav-item[data-page]").forEach(el => {
+  el.addEventListener("click", () => navigate(el.dataset.page));
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────
+function switchTab(el, tabId) {
+  document.querySelectorAll("[data-tab]").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  ["tab-logs", "tab-claude", "tab-github", "tab-deploy", "tab-settings"].forEach(id => {
+    document.getElementById(id).style.display = id === tabId ? "block" : "none";
+  });
+}
+
+// ── Projects ──────────────────────────────────────────────────────
+async function loadProjects() {
+  try {
+    const projects = await api("/api/projects");
+    const grid = document.getElementById("projects-grid");
+    const empty = document.getElementById("projects-empty");
+
+    if (!projects.length) {
+      grid.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+
+    grid.innerHTML = projects.map(p => {
+      const fwColor = p.framework === 'next' ? 'green' : p.framework === 'express' ? 'blue' : 'dim';
+      return `
+      <div class="card project-card" onclick="navigate('project-detail', '${p.name}')">
+        <div class="flex-between">
+          <div class="name"><span class="status-dot ${p.status}"></span>${p.displayName}</div>
+          <span class="badge badge-${fwColor}">${p.framework}</span>
+        </div>
+        <div class="meta">
+          Port ${p.port} &middot; ${p.name} &middot; ${p.status}
+          ${p.gitRepo ? ' &middot; git' : ''}
+        </div>
+      </div>`;
+    }).join("");
+  } catch (err) {
+    console.error("Failed to load projects:", err);
+  }
+}
+
+// ── Project Detail ────────────────────────────────────────────────
+async function loadProjectDetail(name) {
+  try {
+    currentProject = await api(`/api/projects/${name}`);
+    const p = currentProject;
+
+    document.getElementById("detail-name").textContent = p.displayName;
+    document.getElementById("detail-status").innerHTML = `<span class="badge badge-${p.status === 'running' ? 'green' : p.status === 'error' ? 'red' : 'dim'}">${p.status}</span>`;
+    document.getElementById("detail-framework").innerHTML = `<span class="badge badge-blue">${p.framework}</span>`;
+    document.getElementById("detail-port").innerHTML = `<span class="badge badge-dim">:${p.port}</span>`;
+
+    const actions = document.getElementById("detail-actions");
+    actions.innerHTML = `
+      <button class="btn btn-sm" onclick="buildAndRestart()">Build & Start</button>
+      ${p.status === 'running'
+        ? '<button class="btn btn-sm" onclick="projectAction(\'stop\')">Stop</button><button class="btn btn-sm" onclick="projectAction(\'restart\')">Restart</button>'
+        : '<button class="btn btn-sm btn-primary" onclick="projectAction(\'start\')">Start</button>'}
+    `;
+
+    // Settings
+    document.getElementById("setting-build-cmd").value = p.buildCommand || "";
+    document.getElementById("setting-entry-file").value = p.entryFile || "";
+    document.getElementById("setting-env-vars").value = p.envVars || "{}";
+
+    // GitHub
+    document.getElementById("github-repo-info").textContent = p.gitRepo ? `Repo: ${p.gitRepo}` : "No repo linked.";
+
+    // Deploy targets
+    renderDeployTargets(p);
+
+    // Load logs
+    refreshLogs();
+
+    // Load Claude runs
+    loadClaudeRuns();
+  } catch (err) {
+    console.error("Failed to load project:", err);
+  }
+}
+
+async function projectAction(action) {
+  if (!currentProject) return;
+  try {
+    await api(`/api/projects/${currentProject.name}/${action}`, { method: "POST" });
+    loadProjectDetail(currentProject.name);
+  } catch (err) {
+    alert(`Failed: ${err.message}`);
+  }
+}
+
+async function buildAndRestart() {
+  if (!currentProject) return;
+  try {
+    document.getElementById("detail-status").innerHTML = '<span class="badge badge-amber">building</span>';
+    await api(`/api/projects/${currentProject.name}/build`, { method: "POST" });
+    await api(`/api/projects/${currentProject.name}/start`, { method: "POST" });
+    loadProjectDetail(currentProject.name);
+  } catch (err) {
+    alert(`Build failed: ${err.message}`);
+    loadProjectDetail(currentProject.name);
+  }
+}
+
+async function refreshLogs() {
+  if (!currentProject) return;
+  try {
+    const data = await api(`/api/projects/${currentProject.name}/logs?lines=100`);
+    document.getElementById("detail-logs").textContent = data.logs || "No logs.";
+    const logViewer = document.getElementById("detail-logs");
+    logViewer.scrollTop = logViewer.scrollHeight;
+  } catch { /* ignore */ }
+}
+
+async function saveProjectSettings() {
+  if (!currentProject) return;
+  try {
+    await api(`/api/projects/${currentProject.name}`, {
+      method: "PATCH",
+      body: {
+        buildCommand: document.getElementById("setting-build-cmd").value || null,
+        entryFile: document.getElementById("setting-entry-file").value || "dist/index.js",
+        envVars: document.getElementById("setting-env-vars").value || "{}",
+      },
+    });
+    alert("Settings saved");
+  } catch (err) {
+    alert(`Failed: ${err.message}`);
+  }
+}
+
+async function confirmDeleteProject() {
+  if (!currentProject) return;
+  if (!confirm(`Delete project "${currentProject.name}"? This removes all files and the database.`)) return;
+  try {
+    await api(`/api/projects/${currentProject.name}`, { method: "DELETE" });
+    navigate("projects");
+  } catch (err) {
+    alert(`Failed: ${err.message}`);
+  }
+}
+
+// ── Create Project ────────────────────────────────────────────────
+function showCreateModal() { document.getElementById("create-modal").classList.add("active"); }
+function hideCreateModal() { document.getElementById("create-modal").classList.remove("active"); }
+
+async function createProject() {
+  const name = document.getElementById("create-name").value.trim();
+  const displayName = document.getElementById("create-display").value.trim() || name;
+  const framework = document.getElementById("create-framework").value;
+  const gitRepo = document.getElementById("create-git").value.trim();
+  const needsDb = document.getElementById("create-db").checked;
+
+  if (!name) { alert("Name is required"); return; }
+
+  try {
+    await api("/api/projects", {
+      method: "POST",
+      body: { name, displayName, framework, gitRepo: gitRepo || undefined, needsDb },
+    });
+    hideCreateModal();
+    loadProjects();
+  } catch (err) {
+    alert(`Failed: ${err.message}`);
+  }
+}
+
+// ── Claude ────────────────────────────────────────────────────────
+function setClaudeMode(mode, btn) {
+  claudeMode = mode;
+  btn.parentElement.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+}
+
+async function runClaude() {
+  if (!currentProject) return;
+  const prompt = document.getElementById("claude-prompt").value.trim();
+  if (!prompt) return;
+
+  const runBtn = document.getElementById("claude-run-btn");
+  const outputEl = document.getElementById("claude-output");
+  runBtn.disabled = true;
+  runBtn.textContent = "Running...";
+  outputEl.style.display = "block";
+  outputEl.textContent = "Claude is working...";
+
+  try {
+    const result = await api(`/api/projects/${currentProject.name}/claude`, {
+      method: "POST",
+      body: { prompt, mode: claudeMode },
+    });
+    outputEl.textContent = result.output || "Done (no output)";
+    document.getElementById("claude-prompt").value = "";
+    loadClaudeRuns();
+  } catch (err) {
+    outputEl.textContent = `Error: ${err.message}`;
+  } finally {
+    runBtn.disabled = false;
+    runBtn.textContent = "Run Claude";
+  }
+}
+
+async function loadClaudeRuns() {
+  if (!currentProject) return;
+  try {
+    const runs = await api(`/api/projects/${currentProject.name}/claude/runs`);
+    const el = document.getElementById("claude-runs");
+    if (!runs.length) { el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No runs yet.</div>'; return; }
+    el.innerHTML = runs.map(r => `
+      <div class="card" style="padding:10px;">
+        <div class="flex-between">
+          <span class="badge badge-${r.status === 'completed' ? 'green' : r.status === 'failed' ? 'red' : 'amber'}">${r.status}</span>
+          <span style="font-size:10px; color:var(--text-dim);">${r.mode} &middot; ${r.duration ? Math.round(r.duration / 1000) + 's' : '...'}</span>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          ${escapeHtml(r.prompt.substring(0, 120))}
+        </div>
+      </div>
+    `).join("");
+  } catch { /* ignore */ }
+}
+
+// ── GitHub ────────────────────────────────────────────────────────
+async function githubInit() {
+  if (!currentProject) return;
+  const repoName = prompt("Repository name:", currentProject.name);
+  if (!repoName) return;
+  try {
+    await api(`/api/projects/${currentProject.name}/github/init`, { method: "POST", body: { repoName, isPrivate: true } });
+    loadProjectDetail(currentProject.name);
+  } catch (err) { alert(`Failed: ${err.message}`); }
+}
+
+async function githubPush() {
+  if (!currentProject) return;
+  const msg = prompt("Commit message:", "Update from SCWS");
+  if (!msg) return;
+  try {
+    await api(`/api/projects/${currentProject.name}/github/push`, { method: "POST", body: { message: msg } });
+    alert("Pushed to GitHub");
+  } catch (err) { alert(`Failed: ${err.message}`); }
+}
+
+async function githubPull() {
+  if (!currentProject) return;
+  try {
+    await api(`/api/projects/${currentProject.name}/github/pull`, { method: "POST" });
+    alert("Pulled from GitHub");
+  } catch (err) { alert(`Failed: ${err.message}`); }
+}
+
+// ── Deploy ────────────────────────────────────────────────────────
+function renderDeployTargets(p) {
+  const targets = JSON.parse(p.deployTargets || "[]");
+  const el = document.getElementById("deploy-targets");
+  if (!targets.length) {
+    el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No deploy targets configured.</div>';
+    return;
+  }
+  el.innerHTML = targets.map(t => `
+    <div class="card" style="padding:10px;">
+      <div class="flex-between">
+        <span style="font-weight:600;">${t.name}</span>
+        <button class="btn btn-sm btn-primary" onclick="doDeploy('${t.name}')">Deploy</button>
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+        ${t.user}@${t.host}:${t.remotePath}
+      </div>
+    </div>
+  `).join("");
+}
+
+async function doDeploy(targetName) {
+  if (!currentProject) return;
+  if (!confirm(`Deploy "${currentProject.name}" to ${targetName}?`)) return;
+  try {
+    await api(`/api/projects/${currentProject.name}/deploy`, { method: "POST", body: { targetName } });
+    alert("Deploy complete!");
+  } catch (err) { alert(`Deploy failed: ${err.message}`); }
+}
+
+function showDeployTargetForm() {
+  const name = prompt("Target name (e.g., production):");
+  if (!name) return;
+  const host = prompt("Host (IP or domain):");
+  if (!host) return;
+  const user = prompt("SSH user:", "root");
+  const remotePath = prompt("Remote path:", `/var/www/${currentProject.name}/dist/`);
+  const pm2Name = prompt("PM2 process name:", currentProject.name);
+  const preDeploy = prompt("Pre-deploy command (optional):", "");
+  const postDeploy = prompt("Post-deploy command (optional):", `pm2 restart ${pm2Name}`);
+
+  const targets = JSON.parse(currentProject.deployTargets || "[]");
+  targets.push({ name, host, user, remotePath, pm2Name, preDeploy, postDeploy });
+
+  api(`/api/projects/${currentProject.name}`, {
+    method: "PATCH",
+    body: { deployTargets: JSON.stringify(targets) },
+  }).then(() => {
+    currentProject.deployTargets = JSON.stringify(targets);
+    renderDeployTargets(currentProject);
+  }).catch(err => alert(`Failed: ${err.message}`));
+}
+
+// ── System ────────────────────────────────────────────────────────
+async function loadSystem() {
+  try {
+    const data = await api("/api/system");
+    document.getElementById("system-info").innerHTML = `
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:8px;">Daemon</div>
+        <div style="font-size:12px; color:var(--text-muted);">
+          PID: ${data.daemon.pid} &middot; Node ${data.daemon.nodeVersion} &middot;
+          Uptime: ${Math.round(data.daemon.uptime)}s
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:8px;">Projects</div>
+        <div style="font-size:12px; color:var(--text-muted);">
+          Total: ${data.projects.total} &middot; Running: ${data.projects.running}
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:8px;">Disk</div>
+        <pre style="font-size:11px; color:var(--text-muted); white-space:pre-wrap;">${data.disk || "N/A"}</pre>
+      </div>
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:8px;">Memory</div>
+        <pre style="font-size:11px; color:var(--text-muted); white-space:pre-wrap;">${data.memory || "N/A"}</pre>
+      </div>
+      ${data.uptime ? `
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:8px;">System Uptime</div>
+        <div style="font-size:12px; color:var(--text-muted);">${data.uptime}</div>
+      </div>` : ""}
+    `;
+  } catch (err) {
+    document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed to load: ${err.message}</div>`;
+  }
+}
+
+// ── Activity ──────────────────────────────────────────────────────
+async function loadActivity() {
+  try {
+    const items = await api("/api/activity");
+    const el = document.getElementById("activity-feed");
+    if (!items.length) { el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No activity yet.</div>'; return; }
+    el.innerHTML = items.map(a => `
+      <div class="activity-item">
+        <span class="activity-time">${new Date(a.createdAt).toLocaleTimeString()}</span>
+        <span class="activity-action">${a.action}</span>
+        <span class="activity-details">${escapeHtml(a.details)}</span>
+      </div>
+    `).join("");
+  } catch (err) {
+    document.getElementById("activity-feed").innerHTML = `<div style="color:var(--red);">Failed: ${err.message}</div>`;
+  }
+}
+
+// ── Import from URL ──────────────────────────────────────────────
+async function importFromUrl() {
+  const input = document.getElementById("import-url");
+  const url = input.value.trim();
+  if (!url) { alert("Paste a repo URL first"); return; }
+
+  const btn = document.getElementById("import-btn");
+  btn.disabled = true;
+  btn.textContent = "Importing...";
+
+  try {
+    const project = await api("/api/import", { method: "POST", body: { repoUrl: url } });
+    input.value = "";
+    loadProjects();
+    alert(`Imported "${project.name}" (${project.framework}) on port ${project.port}`);
+  } catch (err) {
+    alert(`Import failed: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Import";
+  }
+}
+
+// ── GitHub Repos Browser ─────────────────────────────────────────
+function showReposModal() { document.getElementById("repos-modal").classList.add("active"); loadRepos(); }
+function hideReposModal() { document.getElementById("repos-modal").classList.remove("active"); }
+
+async function loadRepos() {
+  const el = document.getElementById("repos-list");
+  el.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Loading repos...</div>';
+  try {
+    const repos = await api("/api/github/repos");
+    if (!repos.length) { el.innerHTML = '<div style="color:var(--text-muted);">No repos found.</div>'; return; }
+    el.innerHTML = repos.map(r => `
+      <div class="card" style="padding:10px; cursor:pointer; margin-bottom:8px;" onclick="importRepo('${escapeHtml(r.url)}')">
+        <div class="flex-between">
+          <span style="font-weight:600; font-size:13px;">${escapeHtml(r.name)}</span>
+          <span class="badge ${r.isPrivate ? 'badge-dim' : 'badge-green'}">${r.isPrivate ? 'private' : 'public'}</span>
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+          ${r.description ? escapeHtml(r.description) : 'No description'}
+          ${r.primaryLanguage ? ' &middot; ' + r.primaryLanguage.name : ''}
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<div style="color:var(--red);">Failed: ${err.message}</div>`;
+  }
+}
+
+function importRepo(url) {
+  hideReposModal();
+  document.getElementById("import-url").value = url;
+  importFromUrl();
+}
+
+// ── Util ──────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+
+</body>
+</html>
