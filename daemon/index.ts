@@ -18,6 +18,7 @@ import {
 import { runClaude, startClaudeRun, subscribeToRun, abortRun, getActiveRuns } from "./claude.js";
 import { initRepo, cloneRepo, pushToGithub, pullFromGithub } from "./github.js";
 import { deployProject } from "./deploy.js";
+import { initTerminalServer, shutdownTerminals } from "./terminal.js";
 
 // ── Express setup ─────────────────────────────────────────────────
 
@@ -86,6 +87,9 @@ function param(req: Request, key: string): string {
   const v = req.params[key];
   return Array.isArray(v) ? v[0] : v;
 }
+
+// ── Terminal WebSocket server ─────────────────────────────────────
+initTerminalServer(httpServer, (token) => safeEqual(token, DASHBOARD_TOKEN));
 
 // ── Health check (no auth) ────────────────────────────────────────
 
@@ -481,6 +485,7 @@ httpServer.listen(PORT, "127.0.0.1", () => {
 // Graceful shutdown
 process.on("SIGTERM", async () => {
   log("SIGTERM received, shutting down...", "shutdown");
+  shutdownTerminals();
   httpServer.close();
   await pool.end();
   process.exit(0);
@@ -488,6 +493,7 @@ process.on("SIGTERM", async () => {
 
 process.on("SIGINT", async () => {
   log("SIGINT received, shutting down...", "shutdown");
+  shutdownTerminals();
   httpServer.close();
   await pool.end();
   process.exit(0);

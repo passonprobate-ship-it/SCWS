@@ -7,6 +7,7 @@ const allowlist = [
   "express",
   "pg",
   "uuid",
+  "ws",
   "zod",
   "zod-validation-error",
 ];

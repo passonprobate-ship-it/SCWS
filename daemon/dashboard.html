@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SCWS — Self Coding Web Server</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -208,92 +209,26 @@
     .cmd-item:hover, .cmd-item.selected { background: var(--bg-hover); color: var(--text); }
     .cmd-item .cmd-keys { font-size: 10px; color: var(--text-dim); }
 
-    /* ── Claude Terminal ───────────────────────── */
-    .claude-terminal { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-    .claude-header {
+    /* ── Web Terminal ─────────────────────────── */
+    .terminal-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .terminal-header {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
-    .claude-header-left { display: flex; align-items: center; gap: 12px; }
-    .claude-header-right { display: flex; align-items: center; gap: 8px; }
-    .claude-conversation {
-      flex: 1; overflow-y: auto; padding: 16px 0; min-height: 0;
+    .terminal-header-left { display: flex; align-items: center; gap: 12px; }
+    .terminal-header-right { display: flex; align-items: center; gap: 8px; }
+    .terminal-container {
+      flex: 1; min-height: 0; background: #000; border-radius: var(--radius);
+      overflow: hidden; position: relative;
     }
-    .claude-msg {
-      margin-bottom: 16px; border-radius: var(--radius-lg); padding: 14px 16px;
-      border: 1px solid var(--border); position: relative;
+    .terminal-container .xterm { height: 100%; padding: 4px; }
+    .terminal-container .xterm-viewport { border-radius: var(--radius); }
+    .terminal-status {
+      position: absolute; top: 8px; right: 12px; font-size: 10px;
+      padding: 2px 8px; border-radius: 10px; z-index: 10; pointer-events: none;
     }
-    .claude-msg-user {
-      background: rgba(79,70,229,.06); border-color: rgba(79,70,229,.15);
-      margin-left: 40px;
-    }
-    .claude-msg-assistant {
-      background: var(--bg-card); margin-right: 40px;
-    }
-    .claude-msg-role {
-      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
-      margin-bottom: 8px;
-    }
-    .claude-msg-role.user { color: var(--accent); }
-    .claude-msg-role.assistant { color: var(--cyan); }
-    .claude-msg-time { position: absolute; top: 14px; right: 16px; font-size: 10px; color: var(--text-dim); }
-    .claude-msg-content { font-size: 13px; line-height: 1.7; }
-    .claude-msg-content pre {
-      background: #050508; border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 10px 12px; margin: 8px 0; overflow-x: auto; font-size: 12px; line-height: 1.5;
-    }
-    .claude-msg-content code { font-family: inherit; }
-    .claude-msg-content p { margin-bottom: 6px; }
-
-    /* Tool calls */
-    .tool-call {
-      margin: 8px 0; border: 1px solid var(--border); border-radius: var(--radius);
-      overflow: hidden;
-    }
-    .tool-call summary {
-      padding: 6px 10px; background: var(--bg-surface); cursor: pointer;
-      font-size: 11px; color: var(--text-muted); user-select: none;
-    }
-    .tool-call summary:hover { color: var(--text); }
-    .tool-call-body {
-      padding: 8px 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5;
-      background: #050508; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
-    }
-
-    /* Syntax highlighting */
-    .hl-kw { color: #c792ea; }
-    .hl-str { color: #c3e88d; }
-    .hl-cmt { color: #546e7a; }
-    .hl-num { color: #f78c6c; }
-    .hl-fn { color: #82aaff; }
-    .hl-op { color: #89ddff; }
-    .diff-add { color: var(--green); }
-    .diff-del { color: var(--red); }
-
-    /* Input bar */
-    .claude-input-bar {
-      border-top: 1px solid var(--border); padding-top: 12px;
-      display: flex; gap: 8px; align-items: flex-end;
-    }
-    .claude-input-bar textarea {
-      flex: 1; min-height: 40px; max-height: 120px; padding: 10px 14px;
-      background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius);
-      color: var(--text); font-family: inherit; font-size: 13px; resize: none; line-height: 1.5;
-    }
-    .claude-input-bar textarea:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
-
-    /* Running indicator */
-    .claude-running-bar {
-      display: none; padding: 8px 0; border-top: 1px solid var(--border);
-      font-size: 12px; color: var(--text-muted); align-items: center; gap: 8px;
-    }
-    .claude-running-bar.active { display: flex; }
-    .running-dot {
-      width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-      box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite;
-    }
-    .typing-cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink .6s step-end infinite; margin-left: 2px; vertical-align: text-bottom; }
-    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    .terminal-status.connected { background: rgba(34,197,94,.15); color: var(--green); }
+    .terminal-status.disconnected { background: rgba(239,68,68,.15); color: var(--red); }
 
     /* ── Status Bar ────────────────────────────── */
     .status-bar {
@@ -368,7 +303,7 @@
     <div class="sidebar-logo">SCWS</div>
     <div class="sidebar-nav">
       <div class="nav-item" data-page="claude">
-        <span class="nav-icon">&#9672;</span> <span>Claude</span>
+        <span class="nav-icon">&#9002;</span> <span>Terminal</span>
         <span id="nav-claude-badge" class="nav-badge" style="display:none;"></span>
       </div>
       <div class="nav-item active" data-page="projects">
@@ -388,37 +323,19 @@
   <div class="main">
     <div class="main-scroll">
 
-    <!-- Claude Terminal Page -->
+    <!-- Terminal Page -->
     <div id="page-claude" class="page">
-      <div class="claude-terminal">
-        <div class="claude-header">
-          <div class="claude-header-left">
-            <div class="page-title" style="margin:0;">Claude Terminal</div>
+      <div class="terminal-page">
+        <div class="terminal-header">
+          <div class="terminal-header-left">
+            <div class="page-title" style="margin:0;">Terminal</div>
           </div>
-          <div class="claude-header-right">
-            <select id="claude-project-select" class="select" style="width:auto; min-width:140px; padding:5px 10px; font-size:11px;">
-              <option value="">System (no project)</option>
-            </select>
-            <div class="mode-toggle">
-              <button class="active" onclick="setCTMode('build', this)">Build</button>
-              <button onclick="setCTMode('plan', this)">Plan</button>
-            </div>
-            <select id="claude-session-select" class="select" style="width:auto; min-width:100px; padding:5px 10px; font-size:11px;">
-              <option value="">New Session</option>
-            </select>
+          <div class="terminal-header-right">
+            <button class="btn btn-sm" id="term-connect-btn" onclick="toggleTerminal()">Connect</button>
           </div>
         </div>
-        <div id="claude-conversation" class="claude-conversation"></div>
-        <div id="claude-running-bar" class="claude-running-bar">
-          <span class="running-dot"></span>
-          <span id="claude-timer">0:00</span>
-          <span>Running...</span>
-          <span style="flex:1;"></span>
-          <button class="btn btn-sm btn-danger" onclick="abortClaudeRun()">Abort</button>
-        </div>
-        <div class="claude-input-bar">
-          <textarea id="claude-input" placeholder="Tell Claude what to build..." rows="1" onkeydown="handleClaudeKey(event)"></textarea>
-          <button class="btn btn-primary" id="claude-send-btn" onclick="sendClaudePrompt()">Send</button>
+        <div id="terminal-container" class="terminal-container">
+          <span id="terminal-status" class="terminal-status disconnected">disconnected</span>
         </div>
       </div>
     </div>
@@ -650,13 +567,6 @@
 // ── State ─────────────────────────────────────────────────────────
 let token = localStorage.getItem("scws_token") || "";
 let currentProject = null;
-let claudeMode = "build";
-let ctMode = "build";     // Claude Terminal mode
-let ctRunId = null;        // active run ID
-let ctEventSource = null;  // active SSE connection
-let ctTimerInterval = null;
-let ctSessionId = null;    // for resume
-let ctMessages = [];       // conversation messages
 let liveLogSource = null;  // live log SSE
 let autoRefreshTimer = null;
 let activityFilter = "all";
@@ -778,7 +688,6 @@ function initApp() {
   loadProjects();
   updateStatusBar();
   setInterval(updateStatusBar, 15000);
-  loadClaudeSessions();
 }
 
 // ── Navigation ────────────────────────────────────────────────────
@@ -801,10 +710,7 @@ function navigate(page, data) {
   if (page === "project-detail" && data) loadProjectDetail(data);
   if (page === "system") loadSystem();
   if (page === "activity") loadActivity();
-  if (page === "claude") {
-    populateClaudeProjectSelect();
-    document.getElementById("claude-input").focus();
-  }
+  if (page === "claude") initTerminalIfNeeded();
 }
 
 document.querySelectorAll(".sidebar .nav-item[data-page]").forEach(el => {
@@ -881,7 +787,6 @@ async function quickAction(name, action) {
 
 function navigateClaude(projectName) {
   navigate("claude");
-  document.getElementById("claude-project-select").value = projectName;
 }
 
 // ── Project Detail ────────────────────────────────────────────────
@@ -1120,233 +1025,173 @@ async function loadClaudeRuns() {
   } catch { /* ignore */ }
 }
 
-// ── Claude Terminal (Hero Page) ──────────────────────────────────
-function populateClaudeProjectSelect() {
-  const sel = document.getElementById("claude-project-select");
-  const current = sel.value;
-  sel.innerHTML = '<option value="">System (no project)</option>';
-  projectsList.forEach(p => {
-    sel.innerHTML += `<option value="${p.name}"${p.name === current ? ' selected' : ''}>${escapeHtml(p.displayName)} (${p.name})</option>`;
+// ── Web Terminal ─────────────────────────────────────────────────
+let term = null;
+let termWs = null;
+let termFitAddon = null;
+let termResizeObserver = null;
+
+function initTerminalIfNeeded() {
+  if (term) {
+    // Already initialized — just re-fit
+    setTimeout(() => { if (termFitAddon) termFitAddon.fit(); }, 50);
+    if (!termWs || termWs.readyState !== WebSocket.OPEN) connectTerminal();
+    return;
+  }
+
+  const container = document.getElementById("terminal-container");
+
+  // Create xterm instance
+  term = new Terminal({
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+    theme: {
+      background: "#0a0a0f",
+      foreground: "#e4e4ef",
+      cursor: "#4f46e5",
+      cursorAccent: "#0a0a0f",
+      selectionBackground: "rgba(79,70,229,0.3)",
+      black: "#0a0a0f",
+      red: "#ef4444",
+      green: "#22c55e",
+      yellow: "#f59e0b",
+      blue: "#3b82f6",
+      magenta: "#c792ea",
+      cyan: "#06b6d4",
+      white: "#e4e4ef",
+      brightBlack: "#6b6b80",
+      brightRed: "#f87171",
+      brightGreen: "#4ade80",
+      brightYellow: "#fbbf24",
+      brightBlue: "#60a5fa",
+      brightMagenta: "#dda0dd",
+      brightCyan: "#22d3ee",
+      brightWhite: "#ffffff",
+    },
+    allowProposedApi: true,
   });
-}
 
-async function loadClaudeSessions() {
-  try {
-    const sessions = await api("/api/claude/sessions");
-    const sel = document.getElementById("claude-session-select");
-    sel.innerHTML = '<option value="">New Session</option>';
-    sessions.forEach(s => {
-      const date = new Date(s.lastAt).toLocaleDateString();
-      sel.innerHTML += `<option value="${s.sessionId}">${escapeHtml(s.projectName || 'system')} (${s.turns} turns, ${date})</option>`;
-    });
-  } catch { /* ignore */ }
-}
+  // Fit addon — auto-resize terminal to container
+  termFitAddon = new FitAddon.FitAddon();
+  term.loadAddon(termFitAddon);
 
-function setCTMode(mode, btn) {
-  ctMode = mode;
-  btn.parentElement.querySelectorAll("button").forEach(b => {
-    b.classList.remove("active", "plan-mode");
+  // Web links addon
+  if (typeof WebLinksAddon !== "undefined") {
+    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+  }
+
+  term.open(container);
+  termFitAddon.fit();
+
+  // Send keystrokes to server
+  term.onData((data) => {
+    if (termWs && termWs.readyState === WebSocket.OPEN) {
+      termWs.send(JSON.stringify({ type: "input", data }));
+    }
   });
-  btn.classList.add("active");
-  if (mode === "plan") btn.classList.add("plan-mode");
+
+  // Auto-resize on container size change
+  termResizeObserver = new ResizeObserver(() => {
+    if (termFitAddon) {
+      termFitAddon.fit();
+      sendResize();
+    }
+  });
+  termResizeObserver.observe(container);
+
+  window.addEventListener("resize", () => {
+    if (termFitAddon) {
+      termFitAddon.fit();
+      sendResize();
+    }
+  });
+
+  connectTerminal();
 }
 
-function handleClaudeKey(e) {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    sendClaudePrompt();
-  }
-  // Auto-resize
-  const ta = e.target;
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
-}
+function connectTerminal() {
+  if (termWs && termWs.readyState === WebSocket.OPEN) return;
 
-async function sendClaudePrompt() {
-  const input = document.getElementById("claude-input");
-  const prompt = input.value.trim();
-  if (!prompt || ctRunId) return;
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${location.host}/api/terminal?token=${encodeURIComponent(token)}`;
 
-  const projectName = document.getElementById("claude-project-select").value || undefined;
-  const continueSession = document.getElementById("claude-session-select").value || undefined;
+  termWs = new WebSocket(url);
+  updateTermStatus("connecting");
 
-  // Add user message to conversation
-  ctMessages.push({ role: "user", text: prompt, time: new Date() });
-  renderConversation();
-  input.value = "";
-  input.style.height = "auto";
-
-  try {
-    const { runId } = await api("/api/claude/run", {
-      method: "POST",
-      body: { projectName, prompt, mode: ctMode, continueSession },
-    });
-
-    ctRunId = runId;
-    showRunningState(true);
-
-    // Add assistant placeholder
-    ctMessages.push({ role: "assistant", text: "", time: new Date(), tools: [], runId });
-    renderConversation();
-
-    // Connect SSE
-    ctEventSource = new EventSource(`/api/claude/stream/${runId}?token=${encodeURIComponent(token)}`);
-    ctEventSource.onmessage = (e) => {
-      try {
-        const obj = JSON.parse(e.data);
-        handleStreamEvent(obj);
-      } catch { /* ignore */ }
-    };
-    ctEventSource.onerror = () => {
-      ctEventSource.close();
-      ctEventSource = null;
-      showRunningState(false);
-      ctRunId = null;
-    };
-  } catch (err) {
-    toast(`Failed: ${err.message}`, "error");
-    ctRunId = null;
-    showRunningState(false);
-  }
-}
-
-function handleStreamEvent(obj) {
-  const lastMsg = ctMessages[ctMessages.length - 1];
-  if (!lastMsg || lastMsg.role !== "assistant") return;
-
-  switch (obj.type) {
-    case "assistant": {
-      const content = obj.message?.content || [];
-      for (const block of content) {
-        if (block.type === "text") lastMsg.text += block.text;
-      }
-      renderConversation();
-      break;
-    }
-    case "tool_use": {
-      const name = obj.tool_name || obj.name || (obj.tool && obj.tool.name) || "Tool";
-      const input = obj.tool_input || obj.input || (obj.tool && obj.tool.input) || {};
-      lastMsg.tools.push({ name, input: JSON.stringify(input, null, 2), output: "" });
-      renderConversation();
-      break;
-    }
-    case "tool_result": {
-      if (lastMsg.tools.length > 0) {
-        const tool = lastMsg.tools[lastMsg.tools.length - 1];
-        const content = obj.content || obj.result?.output || obj.output || "";
-        tool.output = typeof content === "string" ? content : JSON.stringify(content);
-      }
-      renderConversation();
-      break;
-    }
-    case "result": {
-      if (obj.result && !lastMsg.text) lastMsg.text = obj.result;
-      if (obj.session_id) ctSessionId = obj.session_id;
-      renderConversation();
-      break;
-    }
-    case "done": {
-      if (ctEventSource) { ctEventSource.close(); ctEventSource = null; }
-      showRunningState(false);
-      lastMsg.duration = obj.duration;
-      lastMsg.status = obj.status;
-      if (obj.sessionId) ctSessionId = obj.sessionId;
-      ctRunId = null;
-      renderConversation();
-      loadClaudeSessions();
-      toast(`Claude ${obj.status} (${Math.round((obj.duration || 0) / 1000)}s)`, obj.status === "completed" ? "success" : "error");
-
-      // Update session dropdown to allow resume
-      if (ctSessionId) {
-        const sel = document.getElementById("claude-session-select");
-        if (!sel.querySelector(`option[value="${ctSessionId}"]`)) {
-          const opt = document.createElement("option");
-          opt.value = ctSessionId;
-          opt.textContent = `Current session`;
-          opt.selected = true;
-          sel.insertBefore(opt, sel.children[1]);
-        }
-      }
-      break;
-    }
-    case "error": {
-      lastMsg.text += `\n\nError: ${obj.text || "Unknown error"}`;
-      renderConversation();
-      break;
-    }
-  }
-}
-
-function renderConversation() {
-  const el = document.getElementById("claude-conversation");
-  el.innerHTML = ctMessages.map(m => {
-    if (m.role === "user") {
-      return `<div class="claude-msg claude-msg-user">
-        <div class="claude-msg-role user">YOU</div>
-        <div class="claude-msg-time">${formatTime(m.time)}</div>
-        <div class="claude-msg-content">${escapeHtml(m.text)}</div>
-      </div>`;
-    }
-    // Assistant
-    let content = renderMarkdown(m.text);
-    if (ctRunId && m.runId === ctRunId && m.text) {
-      content += '<span class="typing-cursor"></span>';
-    }
-    let toolsHtml = "";
-    if (m.tools && m.tools.length) {
-      toolsHtml = m.tools.map(t => `
-        <details class="tool-call">
-          <summary>Tool: ${escapeHtml(t.name)}</summary>
-          <div class="tool-call-body">${escapeHtml(t.output || t.input)}</div>
-        </details>`).join("");
-    }
-    const duration = m.duration ? ` (${Math.round(m.duration / 1000)}s)` : "";
-    const statusBadge = m.status ? ` <span class="badge badge-${m.status === 'completed' ? 'green' : 'red'}" style="font-size:9px;">${m.status}</span>` : "";
-    return `<div class="claude-msg claude-msg-assistant">
-      <div class="claude-msg-role assistant">CLAUDE${statusBadge}</div>
-      <div class="claude-msg-time">${formatTime(m.time)}${duration}</div>
-      <div class="claude-msg-content">${content}</div>
-      ${toolsHtml}
-    </div>`;
-  }).join("");
-
-  // Auto-scroll
-  el.scrollTop = el.scrollHeight;
-}
-
-function showRunningState(running) {
-  const bar = document.getElementById("claude-running-bar");
-  const sendBtn = document.getElementById("claude-send-btn");
-  const input = document.getElementById("claude-input");
-
-  if (running) {
-    bar.classList.add("active");
-    sendBtn.disabled = true;
-    input.disabled = true;
+  termWs.onopen = () => {
+    updateTermStatus("connected");
+    updateTermBtn("Disconnect");
     document.getElementById("nav-claude-badge").style.display = "block";
-    // Start timer
-    const start = Date.now();
-    ctTimerInterval = setInterval(() => {
-      const sec = Math.floor((Date.now() - start) / 1000);
-      document.getElementById("claude-timer").textContent = `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, "0")}`;
-    }, 1000);
-  } else {
-    bar.classList.remove("active");
-    sendBtn.disabled = false;
-    input.disabled = false;
-    input.focus();
+    // Send initial size
+    sendResize();
+    term.focus();
+  };
+
+  termWs.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "output") {
+        term.write(msg.data);
+      } else if (msg.type === "exit") {
+        term.writeln("\r\n\x1b[31m[Process exited]\x1b[0m");
+        updateTermStatus("disconnected");
+        updateTermBtn("Reconnect");
+        document.getElementById("nav-claude-badge").style.display = "none";
+      }
+    } catch { /* ignore */ }
+  };
+
+  termWs.onclose = () => {
+    updateTermStatus("disconnected");
+    updateTermBtn("Reconnect");
     document.getElementById("nav-claude-badge").style.display = "none";
-    if (ctTimerInterval) { clearInterval(ctTimerInterval); ctTimerInterval = null; }
+    term.writeln("\r\n\x1b[33m[Disconnected]\x1b[0m");
+  };
+
+  termWs.onerror = () => {
+    toast("Terminal connection failed", "error");
+  };
+}
+
+function disconnectTerminal() {
+  if (termWs) {
+    termWs.close();
+    termWs = null;
   }
 }
 
-async function abortClaudeRun() {
-  if (!ctRunId) return;
-  try {
-    await api(`/api/claude/abort/${ctRunId}`, { method: "POST" });
-    toast("Aborting Claude run...", "warning");
-  } catch (err) {
-    toast(`Abort failed: ${err.message}`, "error");
+function toggleTerminal() {
+  if (termWs && termWs.readyState === WebSocket.OPEN) {
+    disconnectTerminal();
+  } else {
+    connectTerminal();
+  }
+}
+
+function sendResize() {
+  if (term && termWs && termWs.readyState === WebSocket.OPEN) {
+    termWs.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+  }
+}
+
+function updateTermStatus(state) {
+  const el = document.getElementById("terminal-status");
+  el.className = `terminal-status ${state === "connected" ? "connected" : "disconnected"}`;
+  el.textContent = state;
+}
+
+function updateTermBtn(label) {
+  const btn = document.getElementById("term-connect-btn");
+  if (btn) {
+    btn.textContent = label;
+    if (label === "Disconnect") {
+      btn.classList.add("btn-danger");
+      btn.classList.remove("btn-primary");
+    } else {
+      btn.classList.remove("btn-danger");
+      btn.classList.add("btn-primary");
+    }
   }
 }
 
@@ -1692,11 +1537,10 @@ async function updateStatusBar() {
       const active = activeRes.value;
       if (active.length) {
         const r = active[0];
-        document.getElementById("sb-claude").innerHTML = `<span class="running-dot" style="width:6px;height:6px;"></span> Claude on ${r.projectName || 'system'} (${Math.round(r.elapsed / 1000)}s)`;
-        document.getElementById("nav-claude-badge").style.display = "block";
+        document.getElementById("sb-claude").innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);display:inline-block;"></span> Claude on ${r.projectName || 'system'} (${Math.round(r.elapsed / 1000)}s)`;
       } else {
-        document.getElementById("sb-claude").textContent = "Claude idle";
-        if (!ctRunId) document.getElementById("nav-claude-badge").style.display = "none";
+        const wsOpen = termWs && termWs.readyState === WebSocket.OPEN;
+        document.getElementById("sb-claude").textContent = wsOpen ? "Terminal connected" : "Terminal idle";
       }
     }
 
@@ -1710,7 +1554,7 @@ let cmdFiltered = [];
 
 function getCommands() {
   const cmds = [
-    { name: "Go to Claude Terminal", action: () => navigate("claude"), keys: "Ctrl+J" },
+    { name: "Go to Terminal", action: () => navigate("claude"), keys: "Ctrl+J" },
     { name: "Go to Projects", action: () => navigate("projects"), keys: "Ctrl+1" },
     { name: "Go to System", action: () => navigate("system"), keys: "Ctrl+2" },
     { name: "Go to Activity", action: () => navigate("activity"), keys: "Ctrl+3" },
@@ -1808,55 +1652,6 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ── Markdown-lite Renderer ───────────────────────────────────────
-function renderMarkdown(text) {
-  if (!text) return "";
-  // Escape HTML first
-  let html = escapeHtml(text);
-
-  // Code blocks: ```lang\n...\n```
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const highlighted = highlightCode(code.trim(), lang);
-    return `<pre><code>${highlighted}</code></pre>`;
-  });
-
-  // Inline code: `...`
-  html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg-surface);padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>');
-
-  // Bold: **...**
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-  // Newlines to paragraphs (simple)
-  html = html.replace(/\n\n/g, "</p><p>");
-  html = html.replace(/\n/g, "<br>");
-  html = `<p>${html}</p>`;
-
-  return html;
-}
-
-function highlightCode(code, lang) {
-  // Diff highlighting
-  if (lang === "diff" || code.match(/^[+-]/m)) {
-    return code.split("\n").map(line => {
-      if (line.startsWith("+")) return `<span class="diff-add">${line}</span>`;
-      if (line.startsWith("-")) return `<span class="diff-del">${line}</span>`;
-      return line;
-    }).join("\n");
-  }
-
-  // Simple syntax highlighting
-  let html = code;
-  // Comments
-  html = html.replace(/(\/\/.*$)/gm, '<span class="hl-cmt">$1</span>');
-  // Strings
-  html = html.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="hl-str">$1</span>');
-  // Numbers
-  html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>');
-  // Keywords
-  html = html.replace(/\b(const|let|var|function|return|if|else|for|while|class|import|export|from|async|await|new|this|try|catch|throw|typeof|interface|type)\b/g, '<span class="hl-kw">$1</span>');
-
-  return html;
-}
-
 // ── Util ──────────────────────────────────────────────────────────
 function escapeHtml(s) {
   if (!s) return "";
@@ -1888,6 +1683,10 @@ function formatBytes(bytes) {
   return (bytes / (1024 * 1024)).toFixed(0) + "MB";
 }
 </script>
+
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0/lib/addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0/lib/addon-web-links.min.js"></script>
 
 </body>
 </html>
