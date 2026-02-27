@@ -18,7 +18,7 @@ export async function initRepo(projectName: string, repoName?: string, isPrivate
 
   await git(["init"], dir);
   await git(["add", "-A"], dir);
-  await git(["commit", "-m", "Initial commit from SCWS"], dir);
+  await git(["commit", "-m", "Initial commit from SPAWN"], dir);
 
   const visibility = isPrivate ? "--private" : "--public";
   await execFileAsync("gh", ["repo", "create", repo, visibility, "--source=.", "--push"], {
@@ -57,7 +57,7 @@ export async function cloneRepo(repoUrl: string, projectName: string): Promise<v
 
 export async function pushToGithub(projectName: string, message?: string): Promise<void> {
   const dir = `${PROJECTS_DIR}/${projectName}`;
-  const commitMsg = message || `Update from SCWS (${new Date().toISOString()})`;
+  const commitMsg = message || `Update from SPAWN (${new Date().toISOString()})`;
 
   // Stage all changes
   await git(["add", "-A"], dir);

@@ -1,5 +1,5 @@
 #!/bin/bash
-# SCWS Health Check — runs every 5 minutes via cron
+# SPAWN Health Check — runs every 5 minutes via cron
 
 STATE_FILE="/var/www/scws/logs/health-state.json"
 LOG_FILE="/var/www/scws/logs/health.log"
@@ -54,12 +54,12 @@ EOF
 # Log issues
 [ "$NGINX" = "down" ] && log "ALERT: nginx is down"
 [ "$POSTGRES" = "down" ] && log "ALERT: postgresql is down"
-[ "$DAEMON" = "down" ] && log "ALERT: SCWS daemon is down"
+[ "$DAEMON" = "down" ] && log "ALERT: SPAWN daemon is down"
 [ "$DISK_STATUS" = "critical" ] && log "ALERT: Disk usage at ${DISK_PCT}%"
 [ "$MEM_STATUS" = "critical" ] && log "ALERT: Memory available ${MEM_AVAIL}MB"
 
 # Try to restart daemon if down
 if [ "$DAEMON" = "down" ]; then
-  log "Attempting to restart scws-daemon..."
+  log "Attempting to restart SPAWN daemon (scws-daemon)..."
   pm2 restart scws-daemon 2>/dev/null || true
 fi

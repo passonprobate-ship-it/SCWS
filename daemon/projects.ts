@@ -8,6 +8,7 @@ import { log } from "./logger.js";
 import { pm2Start, pm2Stop, pm2Restart, pm2Delete, pm2Logs } from "./pm2.js";
 import { addProjectNginx, removeProjectNginx } from "./nginx.js";
 import type { Project } from "../shared/schema.js";
+import { notify } from "./channels.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,7 +90,30 @@ await build({
 });
 console.log("Build complete: dist/index.js");
 `,
-    "CLAUDE.md": `# ${name}\n\nExpress project on SCWS. Port ${port}. Base URL: /${name}\n`,
+    "CLAUDE.md": `# ${name}
+
+Express project running on SPAWN (Self-Programming Autonomous Web Node).
+
+## Environment
+- **Port**: ${port}
+- **Base URL**: /${name}
+- **Directory**: /var/www/scws/projects/${name}
+- **Process**: PM2 name \`${name}\`
+- **Database**: Check .env for DATABASE_URL (if provisioned)
+
+## Stack
+Express + TypeScript + esbuild. Build with \`node script/build.js\`, output to \`dist/index.js\`.
+
+## Key Files
+- \`src/index.ts\` — Express app entry point
+- \`script/build.js\` — esbuild bundler
+- \`.env\` — PORT, BASE_URL, DATABASE_URL
+
+## Rules
+- All routes must be relative to BASE_URL (/${name}/)
+- The app is reverse-proxied by nginx — don't handle SSL
+- After changes: build, then \`pm2 restart ${name}\`
+`,
   };
 }
 
@@ -111,7 +135,23 @@ function staticScaffold(name: string): Record<string, string> {
   <h1>${name}</h1>
 </body>
 </html>`,
-    "CLAUDE.md": `# ${name}\n\nStatic site on SCWS. Served at /${name}\n`,
+    "CLAUDE.md": `# ${name}
+
+Static site running on SPAWN (Self-Programming Autonomous Web Node).
+
+## Environment
+- **Served at**: /${name}/
+- **Directory**: /var/www/scws/projects/${name}
+- **Type**: Static HTML/CSS/JS (no build step, no server process)
+
+## Key Files
+- \`index.html\` — Entry point
+- All asset paths must be relative to \`/${name}/\`
+
+## Rules
+- Use \`<base href="/${name}/">\` in HTML head for correct relative paths
+- nginx serves files directly — no PM2 process needed
+`,
   };
 }
 
@@ -138,8 +178,32 @@ function nextScaffold(name: string, port: number): Record<string, string> {
       exclude: ["node_modules"],
     }, null, 2),
     "src/app/layout.tsx": `export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html lang="en"><body>{children}</body></html>;\n}\n`,
-    "src/app/page.tsx": `export default function Home() {\n  return <main><h1>${name}</h1><p>Running on SCWS</p></main>;\n}\n`,
-    "CLAUDE.md": `# ${name}\n\nNext.js project on SCWS. Port ${port}. Base path: /${name}\n`,
+    "src/app/page.tsx": `export default function Home() {\n  return <main><h1>${name}</h1><p>Running on SPAWN</p></main>;\n}\n`,
+    "CLAUDE.md": `# ${name}
+
+Next.js project running on SPAWN (Self-Programming Autonomous Web Node).
+
+## Environment
+- **Port**: ${port}
+- **Base path**: /${name}
+- **Directory**: /var/www/scws/projects/${name}
+- **Process**: PM2 name \`${name}\`
+- **Database**: Check .env for DATABASE_URL (if provisioned)
+
+## Stack
+Next.js 16 + React 19 + TypeScript. \`basePath: "/${name}"\` is set in next.config.ts.
+
+## Key Files
+- \`src/app/\` — App Router pages and layouts
+- \`next.config.ts\` — basePath and other config
+- \`.env\` — PORT, BASE_URL, AUTH_URL, DATABASE_URL
+
+## Rules
+- basePath is /${name} — all routes are relative to this
+- Build: \`npm run build\` (creates .next/), Start: \`npm run start\`
+- The app is reverse-proxied by nginx — don't handle SSL
+- After changes: \`npm run build\`, then \`pm2 restart ${name}\`
+`,
   };
 }
 
@@ -296,8 +360,9 @@ export async function importFromUrl(repoUrl: string): Promise<Project> {
   }
   if (framework === "next") {
     envLines.push(`AUTH_SECRET=${randomBytes(32).toString("hex")}`);
-    envLines.push(`AUTH_URL=https://scws.duckdns.org/${name}`);
-    envLines.push(`NEXTAUTH_URL=https://scws.duckdns.org/${name}`);
+    const baseUrl = process.env.SCWS_BASE_URL || "http://localhost:4000";
+    envLines.push(`AUTH_URL=${baseUrl}/${name}`);
+    envLines.push(`NEXTAUTH_URL=${baseUrl}/${name}`);
   }
   await writeFile(`${projectDir}/.env`, envLines.join("\n") + "\n", "utf-8");
 
@@ -504,6 +569,7 @@ export async function startProject(name: string): Promise<void> {
     action: "started",
     details: `Started on port ${project.port}`,
   });
+  notify("project_started", `Project "${name}" started on port ${project.port}`).catch(() => {});
 }
 
 // ── Stop ──────────────────────────────────────────────────────────
@@ -519,6 +585,7 @@ export async function stopProject(name: string): Promise<void> {
     action: "stopped",
     details: "Stopped",
   });
+  notify("project_stopped", `Project "${name}" stopped`).catch(() => {});
 }
 
 // ── Restart ───────────────────────────────────────────────────────
@@ -562,6 +629,7 @@ export async function buildProject(name: string): Promise<{ output: string }> {
       action: "built",
       details: "Build succeeded",
     });
+    notify("build_succeeded", `Build succeeded for "${name}"`).catch(() => {});
 
     const output = (stdout + "\n" + stderr).trim();
     log(`Build completed for "${name}"`, "project");
@@ -574,6 +642,7 @@ export async function buildProject(name: string): Promise<{ output: string }> {
       action: "build_failed",
       details: msg,
     });
+    notify("build_failed", `Build failed for "${name}": ${msg.substring(0, 200)}`).catch(() => {});
     throw new Error(`Build failed: ${msg}`);
   }
 }

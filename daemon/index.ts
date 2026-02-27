@@ -19,6 +19,14 @@ import { runClaude, startClaudeRun, subscribeToRun, abortRun, getActiveRuns } fr
 import { initRepo, cloneRepo, pushToGithub, pullFromGithub } from "./github.js";
 import { deployProject } from "./deploy.js";
 import { initTerminalServer, shutdownTerminals } from "./terminal.js";
+import {
+  readClaudeSettings, writeClaudeSettings, sanitizeAllServers,
+  testMcpConnection, listMcpTools, type McpServerConfig,
+} from "./mcp.js";
+import {
+  sanitizeChannelConfig, validateTelegramBot, sendTelegramMessage,
+  validateEmailConfig, testChannel, getDefaultNotificationRules,
+} from "./channels.js";
 
 // ── Express setup ─────────────────────────────────────────────────
 
@@ -270,7 +278,7 @@ app.get("/api/projects/:name/logs/stream", (req: Request, res: Response) => {
 
   const { spawn: sp } = require("child_process");
   const tail = sp("pm2", ["logs", pm2Name, "--raw", "--lines", "50"], {
-    env: { ...process.env, HOME: "/root" },
+    env: { ...process.env, HOME: process.env.HOME || "/home/codeman" },
   });
 
   tail.stdout?.on("data", (chunk: Buffer) => {
@@ -413,6 +421,279 @@ app.get("/api/github/repos", asyncHandler("List GitHub repos", async (req, res) 
   res.json(JSON.parse(stdout));
 }));
 
+// ── MCP Server Management ────────────────────────────────────────
+
+app.get("/api/mcp/servers", asyncHandler("List MCP servers", async (_req, res) => {
+  const settings = await readClaudeSettings();
+  const servers = settings.mcpServers || {};
+  res.json({ servers: sanitizeAllServers(servers) });
+}));
+
+app.post("/api/mcp/servers", asyncHandler("Add MCP server", async (req, res) => {
+  const { name, type, url, headers, command, args } = req.body;
+  if (!name || !type) {
+    res.status(400).json({ error: "name and type are required" });
+    return;
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name)) {
+    res.status(400).json({ error: "name must be alphanumeric with hyphens/underscores" });
+    return;
+  }
+
+  const settings = await readClaudeSettings();
+  if (!settings.mcpServers) settings.mcpServers = {};
+  if (settings.mcpServers[name]) {
+    res.status(409).json({ error: `Server "${name}" already exists` });
+    return;
+  }
+
+  const config: McpServerConfig = { type };
+  if (url) config.url = url;
+  if (headers) config.headers = headers;
+  if (command) config.command = command;
+  if (args) config.args = args;
+
+  settings.mcpServers[name] = config;
+  await writeClaudeSettings(settings);
+  res.status(201).json({ ok: true });
+}));
+
+app.patch("/api/mcp/servers/:name", asyncHandler("Edit MCP server", async (req, res) => {
+  const name = param(req, "name");
+  const settings = await readClaudeSettings();
+  if (!settings.mcpServers?.[name]) {
+    res.status(404).json({ error: `Server "${name}" not found` });
+    return;
+  }
+
+  const existing = settings.mcpServers[name];
+  const { type, url, headers, command, args } = req.body;
+
+  if (type !== undefined) existing.type = type;
+  if (url !== undefined) existing.url = url;
+  if (command !== undefined) existing.command = command;
+  if (args !== undefined) existing.args = args;
+
+  // Headers: merge, preserving existing auth if new value is empty/masked
+  if (headers && typeof headers === "object") {
+    if (!existing.headers) existing.headers = {};
+    for (const [key, val] of Object.entries(headers) as [string, string][]) {
+      if (val && val !== "***" && val !== "Bearer ***") {
+        existing.headers[key] = val;
+      }
+      // If blank or masked, keep existing value
+    }
+  }
+
+  await writeClaudeSettings(settings);
+  res.json({ ok: true });
+}));
+
+app.delete("/api/mcp/servers/:name", asyncHandler("Delete MCP server", async (req, res) => {
+  const name = param(req, "name");
+  const settings = await readClaudeSettings();
+  if (!settings.mcpServers?.[name]) {
+    res.status(404).json({ error: `Server "${name}" not found` });
+    return;
+  }
+  delete settings.mcpServers[name];
+  await writeClaudeSettings(settings);
+  res.json({ ok: true });
+}));
+
+app.post("/api/mcp/servers/:name/test", asyncHandler("Test MCP server", async (req, res) => {
+  const name = param(req, "name");
+  const settings = await readClaudeSettings();
+  const config = settings.mcpServers?.[name];
+  if (!config) {
+    res.status(404).json({ error: `Server "${name}" not found` });
+    return;
+  }
+  const result = await testMcpConnection(config);
+  res.json(result);
+}));
+
+app.get("/api/mcp/servers/:name/tools", asyncHandler("List MCP tools", async (req, res) => {
+  const name = param(req, "name");
+  const settings = await readClaudeSettings();
+  const config = settings.mcpServers?.[name];
+  if (!config) {
+    res.status(404).json({ error: `Server "${name}" not found` });
+    return;
+  }
+  const result = await listMcpTools(config);
+  res.json(result);
+}));
+
+app.get("/api/mcp/config/project/:name", asyncHandler("Get project MCP config", async (req, res) => {
+  const name = param(req, "name");
+  const raw = await storage.getConfig(`mcp-override:${name}`);
+  res.json(raw ? JSON.parse(raw) : { servers: {} });
+}));
+
+app.patch("/api/mcp/config/project/:name", asyncHandler("Set project MCP config", async (req, res) => {
+  const name = param(req, "name");
+  const { servers } = req.body;
+  if (!servers || typeof servers !== "object") {
+    res.status(400).json({ error: "servers object is required" });
+    return;
+  }
+  await storage.setConfig(`mcp-override:${name}`, JSON.stringify({ servers }));
+  res.json({ ok: true });
+}));
+
+// ── Channels ──────────────────────────────────────────────────────
+
+app.get("/api/channels", asyncHandler("List channels", async (_req, res) => {
+  const list = await storage.getChannels();
+  const sanitized = list.map(ch => ({
+    ...ch,
+    config: JSON.stringify(sanitizeChannelConfig(ch.type, JSON.parse(ch.config))),
+  }));
+  res.json(sanitized);
+}));
+
+app.post("/api/channels", asyncHandler("Create channel", async (req, res) => {
+  const { type, name, config } = req.body;
+  if (!type || !name) { res.status(400).json({ error: "type and name required" }); return; }
+  if (!["telegram", "email"].includes(type)) { res.status(400).json({ error: "Unsupported type" }); return; }
+
+  const channelConfig = { ...config };
+
+  if (type === "telegram") {
+    if (!channelConfig.botToken) { res.status(400).json({ error: "botToken required" }); return; }
+    const validation = await validateTelegramBot(channelConfig.botToken);
+    if (!validation.ok) { res.status(400).json({ error: validation.error }); return; }
+    channelConfig.botUsername = validation.username;
+  }
+
+  if (type === "email") {
+    if (!channelConfig.apiKey || !channelConfig.inboxId || !channelConfig.recipientEmail) {
+      res.status(400).json({ error: "apiKey, inboxId, and recipientEmail required" }); return;
+    }
+    const validation = await validateEmailConfig(channelConfig.apiKey, channelConfig.inboxId);
+    if (!validation.ok) { res.status(400).json({ error: validation.error }); return; }
+    channelConfig.inboxAddress = validation.address;
+  }
+
+  const channel = await storage.createChannel({
+    type,
+    name,
+    config: JSON.stringify(channelConfig),
+    enabled: 1,
+    verified: type === "email" ? 1 : 0,
+    status: type === "email" ? "connected" : "pending",
+  });
+
+  await storage.logActivity({ action: "channel_created", details: `Created ${type} channel "${name}"` });
+
+  res.status(201).json({
+    ...channel,
+    config: JSON.stringify(sanitizeChannelConfig(type, channelConfig)),
+  });
+}));
+
+app.patch("/api/channels/:id", asyncHandler("Update channel", async (req, res) => {
+  const id = param(req, "id");
+  const existing = await storage.getChannel(id);
+  if (!existing) { res.status(404).json({ error: "Channel not found" }); return; }
+
+  const updates: Record<string, unknown> = {};
+  if (req.body.name !== undefined) updates.name = req.body.name;
+  if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
+
+  if (req.body.config) {
+    const existingConfig = JSON.parse(existing.config);
+    for (const [key, val] of Object.entries(req.body.config)) {
+      if (val && typeof val === "string" && !val.startsWith("***")) {
+        existingConfig[key] = val;
+      }
+    }
+    updates.config = JSON.stringify(existingConfig);
+  }
+
+  const updated = await storage.updateChannel(id, updates as any);
+  res.json({
+    ...updated,
+    config: JSON.stringify(sanitizeChannelConfig(existing.type, JSON.parse(updated!.config))),
+  });
+}));
+
+app.delete("/api/channels/:id", asyncHandler("Delete channel", async (req, res) => {
+  const id = param(req, "id");
+  const existing = await storage.getChannel(id);
+  if (!existing) { res.status(404).json({ error: "Channel not found" }); return; }
+  await storage.deleteChannel(id);
+  await storage.logActivity({ action: "channel_deleted", details: `Deleted ${existing.type} channel "${existing.name}"` });
+  res.json({ ok: true });
+}));
+
+app.post("/api/channels/:id/test", asyncHandler("Test channel", async (req, res) => {
+  const id = param(req, "id");
+  const result = await testChannel(id);
+  res.json(result);
+}));
+
+app.post("/api/channels/:id/verify-telegram", asyncHandler("Verify Telegram", async (req, res) => {
+  const id = param(req, "id");
+  const { chatId } = req.body;
+  if (!chatId) { res.status(400).json({ error: "chatId required" }); return; }
+
+  const channel = await storage.getChannel(id);
+  if (!channel || channel.type !== "telegram") {
+    res.status(404).json({ error: "Telegram channel not found" }); return;
+  }
+
+  const config = JSON.parse(channel.config);
+  config.chatId = String(chatId);
+
+  const result = await sendTelegramMessage(config.botToken, config.chatId, "<b>[SPAWN]</b> Connected! Notifications enabled.");
+  if (!result.ok) { res.json({ ok: false, error: result.error }); return; }
+
+  await storage.updateChannel(id, {
+    config: JSON.stringify(config),
+    verified: 1,
+    status: "connected",
+    lastTestedAt: new Date(),
+  });
+
+  res.json({ ok: true });
+}));
+
+app.get("/api/notifications", asyncHandler("List notifications", async (req, res) => {
+  const limit = parseInt(req.query.limit as string) || 50;
+  const list = await storage.getNotifications(limit);
+  res.json(list);
+}));
+
+app.get("/api/channels/config/rules", asyncHandler("Get notification rules", async (_req, res) => {
+  const raw = await storage.getConfig("notification-rules");
+  res.json(raw ? JSON.parse(raw) : getDefaultNotificationRules());
+}));
+
+app.patch("/api/channels/config/rules", asyncHandler("Update notification rules", async (req, res) => {
+  await storage.setConfig("notification-rules", JSON.stringify(req.body));
+  res.json({ ok: true });
+}));
+
+app.get("/api/channels/mcp-proxy", asyncHandler("Proxy MCP channels", async (_req, res) => {
+  const mcpUrl = await storage.getConfig("mcp-server-url");
+  const mcpToken = await storage.getConfig("mcp-server-token");
+  if (!mcpUrl || !mcpToken) { res.json({ channels: [], configured: false }); return; }
+  try {
+    const resp = await fetch(`${mcpUrl}/api/channels`, {
+      headers: { Authorization: `Bearer ${mcpToken}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const channels = await resp.json();
+    res.json({ channels, configured: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.json({ channels: [], configured: true, error: msg });
+  }
+}));
+
 // ── System ────────────────────────────────────────────────────────
 
 app.get("/api/system", asyncHandler("System info", async (_req, res) => {
@@ -446,7 +727,7 @@ app.get("/api/system/pm2", asyncHandler("PM2 process list", async (_req, res) =>
   try {
     const { stdout } = await execFileAsync("pm2", ["jlist"], {
       timeout: 10_000,
-      env: { ...process.env, HOME: "/root" },
+      env: { ...process.env, HOME: process.env.HOME || "/home/codeman" },
     });
     const processes = JSON.parse(stdout).map((p: Record<string, unknown>) => {
       const env = (p.pm2_env || {}) as Record<string, unknown>;
@@ -478,7 +759,7 @@ app.get("/api/activity", asyncHandler("Get activity", async (req, res) => {
 const PORT = parseInt(process.env.PORT || "4000", 10);
 
 httpServer.listen(PORT, "127.0.0.1", () => {
-  log(`SCWS daemon listening on 127.0.0.1:${PORT}`, "startup");
+  log(`SPAWN daemon listening on 127.0.0.1:${PORT}`, "startup");
   log(`Dashboard at http://127.0.0.1:${PORT}`, "startup");
 });
 

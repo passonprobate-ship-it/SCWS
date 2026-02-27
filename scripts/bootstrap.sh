@@ -2,59 +2,83 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════
-# SCWS Bootstrap Script — Self Coding Web Server
-# Provisions a fresh Ubuntu 24.04 VPS into a full dev + hosting server
+# SPAWN Bootstrap Script — Raspberry Pi 5 + Tailscale
+# Self-Programming Autonomous Web Node
+# Provisions a fresh Ubuntu Server 24.04 ARM64 Pi into a dev server
+# Run as: sudo bash bootstrap.sh
 # ═══════════════════════════════════════════════════════════════════
 
 # ── Configuration (edit these before running) ─────────────────────
 
-DUCKDNS_DOMAIN="scws"
-DUCKDNS_TOKEN="93efc674-6dc6-4bac-a4aa-22b22bf3f416"
-CERTBOT_EMAIL="billycarr007@gmail.com"
+SCWS_USER="codeman"              # non-root user who runs the daemon
 DASHBOARD_TOKEN="b3089956e81b8b8c11979d66b8e31776178f67d79da18a5670374810433d2ad1"
 DB_PASSWORD="scws_$(openssl rand -hex 8)"
 MCP_SERVER_URL="https://passoncloud.duckdns.org/mcp"
 MCP_SERVER_TOKEN="2c86de7bd448b5f21614599cae27ceccdca921756ec2f8d1ed3e4c8a8e178ce8"
 
-if [ -z "$DUCKDNS_TOKEN" ] || [ -z "$CERTBOT_EMAIL" ] || [ -z "$DASHBOARD_TOKEN" ]; then
-  echo "ERROR: Edit this script and fill in DUCKDNS_TOKEN, CERTBOT_EMAIL, and DASHBOARD_TOKEN"
+SCWS_HOME=$(eval echo "~${SCWS_USER}")
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "ERROR: Run this script as root (sudo bash bootstrap.sh)"
   exit 1
 fi
 
 echo "═══════════════════════════════════════════════════════"
-echo "  SCWS Bootstrap — Starting VPS provisioning"
+echo "  SPAWN Bootstrap — Raspberry Pi 5 Provisioning"
 echo "═══════════════════════════════════════════════════════"
 
 # ── Step 1: System packages ───────────────────────────────────────
 echo ""
-echo "▸ Step 1/12: Installing system packages..."
+echo "▸ Step 1/11: Installing system packages..."
 
 apt update && apt upgrade -y
 apt install -y \
-  nginx postgresql postgresql-contrib fail2ban ufw \
+  nginx postgresql postgresql-contrib fail2ban \
   curl wget git build-essential \
   python3 python3-pip python3-venv \
-  jq htop tmux unzip certbot python3-certbot-nginx \
+  jq htop tmux unzip \
   software-properties-common
 
 echo "  ✓ System packages installed"
 
-# ── Step 2: Firewall ──────────────────────────────────────────────
+# ── Step 2: Tailscale ────────────────────────────────────────────
 echo ""
-echo "▸ Step 2/12: Configuring firewall..."
+echo "▸ Step 2/11: Installing Tailscale..."
 
+if ! command -v tailscale &>/dev/null; then
+  curl -fsSL https://tailscale.com/install.sh | sh
+fi
+
+# Check if already connected
+if ! tailscale status &>/dev/null; then
+  echo "  Starting Tailscale..."
+  tailscale up
+fi
+
+TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
+TAILSCALE_HOSTNAME=$(tailscale status --self --json 2>/dev/null | jq -r '.Self.DNSName // "unknown"' | sed 's/\.$//')
+
+echo "  ✓ Tailscale connected"
+echo "  Tailscale IP: ${TAILSCALE_IP}"
+echo "  Hostname:     ${TAILSCALE_HOSTNAME}"
+
+# ── Step 3: Firewall (Tailscale-friendly) ─────────────────────────
+echo ""
+echo "▸ Step 3/11: Configuring firewall..."
+
+# Allow Tailscale interface, block public access
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 22/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
+ufw allow in on tailscale0
+ufw allow 22/tcp   # SSH (local network for initial setup)
+ufw allow 80/tcp   # HTTP (nginx → dashboard + projects)
 ufw --force enable
 
-echo "  ✓ Firewall configured (22, 80, 443)"
+echo "  ✓ Firewall configured (Tailscale + SSH + HTTP)"
 
-# ── Step 3: fail2ban ──────────────────────────────────────────────
+# ── Step 4: fail2ban ──────────────────────────────────────────────
 echo ""
-echo "▸ Step 3/12: Configuring fail2ban..."
+echo "▸ Step 4/11: Configuring fail2ban..."
 
 cat > /etc/fail2ban/jail.local << 'JAIL'
 [DEFAULT]
@@ -73,9 +97,9 @@ systemctl restart fail2ban
 
 echo "  ✓ fail2ban configured"
 
-# ── Step 4: Node.js 20 ───────────────────────────────────────────
+# ── Step 5: Node.js 20 ───────────────────────────────────────────
 echo ""
-echo "▸ Step 4/12: Installing Node.js 20..."
+echo "▸ Step 5/11: Installing Node.js 20..."
 
 if ! command -v node &>/dev/null; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -86,34 +110,25 @@ echo "  Node.js $(node --version)"
 echo "  npm $(npm --version)"
 echo "  ✓ Node.js installed"
 
-# ── Step 5: Global npm tools ─────────────────────────────────────
+# ── Step 6: Global npm tools ─────────────────────────────────────
 echo ""
-echo "▸ Step 5/12: Installing global npm tools..."
+echo "▸ Step 6/11: Installing global npm tools..."
 
 npm install -g pm2 typescript tsx esbuild
 
 echo "  ✓ PM2, TypeScript, tsx, esbuild installed globally"
 
-# ── Step 6: Claude CLI ───────────────────────────────────────────
+# ── Step 7: Claude CLI ───────────────────────────────────────────
 echo ""
-echo "▸ Step 6/12: Installing Claude CLI..."
+echo "▸ Step 7/11: Installing Claude CLI..."
 
-if ! command -v claude &>/dev/null; then
-  curl -fsSL https://claude.ai/install.sh | bash
-  # Add to PATH for current session
-  export PATH="$HOME/.claude/bin:$PATH"
+if ! su - "${SCWS_USER}" -c "command -v claude" &>/dev/null; then
+  su - "${SCWS_USER}" -c "curl -fsSL https://claude.ai/install.sh | bash"
 fi
 
-echo "  ✓ Claude CLI installed"
-echo "  NOTE: Run 'claude' interactively after bootstrap to authenticate with Claude Max"
-
-# ── Step 7: Claude CLI MCP Server Config ─────────────────────────
-echo ""
-echo "▸ Step 7/12: Configuring Claude CLI MCP server connection..."
-
-mkdir -p /root/.claude
-
-cat > /root/.claude/settings.json << EOF
+# Claude CLI settings
+su - "${SCWS_USER}" -c "mkdir -p ${SCWS_HOME}/.claude"
+cat > "${SCWS_HOME}/.claude/settings.json" << EOF
 {
   "mcpServers": {
     "claude-persistent": {
@@ -129,12 +144,14 @@ cat > /root/.claude/settings.json << EOF
   }
 }
 EOF
+chown "${SCWS_USER}:${SCWS_USER}" "${SCWS_HOME}/.claude/settings.json"
 
-echo "  ✓ Claude CLI configured with MCP server at ${MCP_SERVER_URL}"
+echo "  ✓ Claude CLI installed for ${SCWS_USER}"
+echo "  NOTE: Run 'claude' interactively to authenticate with Claude Max"
 
 # ── Step 8: GitHub CLI ───────────────────────────────────────────
 echo ""
-echo "▸ Step 8/12: Installing GitHub CLI..."
+echo "▸ Step 8/11: Installing GitHub CLI..."
 
 if ! command -v gh &>/dev/null; then
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
@@ -145,11 +162,11 @@ if ! command -v gh &>/dev/null; then
 fi
 
 echo "  ✓ GitHub CLI installed"
-echo "  NOTE: Run 'gh auth login' after bootstrap to authenticate"
+echo "  NOTE: Run 'gh auth login' as ${SCWS_USER} after bootstrap"
 
 # ── Step 9: PostgreSQL ───────────────────────────────────────────
 echo ""
-echo "▸ Step 9/12: Configuring PostgreSQL..."
+echo "▸ Step 9/11: Configuring PostgreSQL..."
 
 systemctl enable postgresql
 systemctl start postgresql
@@ -162,14 +179,75 @@ sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='scws_daemon'
 
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE scws_daemon TO scws;"
 
-echo "  ✓ PostgreSQL configured (user: scws, db: scws_daemon)"
+# Create tables matching Drizzle schema (shared/schema.ts)
+sudo -u postgres psql scws_daemon << 'SQL'
+CREATE TABLE IF NOT EXISTS projects (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  port INTEGER NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'stopped',
+  framework TEXT NOT NULL DEFAULT 'express',
+  git_repo TEXT,
+  git_branch TEXT NOT NULL DEFAULT 'main',
+  db_name TEXT,
+  entry_file TEXT NOT NULL DEFAULT 'dist/index.js',
+  build_command TEXT,
+  start_command TEXT,
+  env_vars TEXT NOT NULL DEFAULT '{}',
+  deploy_targets TEXT NOT NULL DEFAULT '[]',
+  last_build_at TIMESTAMP,
+  last_deploy_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS claude_runs (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  project_id VARCHAR NOT NULL,
+  project_name TEXT,
+  prompt TEXT NOT NULL,
+  output TEXT,
+  status TEXT NOT NULL DEFAULT 'running',
+  mode TEXT NOT NULL DEFAULT 'build',
+  session_id TEXT,
+  turn_number INTEGER NOT NULL DEFAULT 1,
+  parent_run_id VARCHAR,
+  duration INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  project_id VARCHAR,
+  action TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS daemon_config (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  key TEXT NOT NULL UNIQUE,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO scws;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO scws;
+SQL
+
+echo "  ✓ PostgreSQL configured (user: scws, db: scws_daemon, tables created)"
 echo "  DB Password: ${DB_PASSWORD}"
 
-# ── Step 10: Directory structure ─────────────────────────────────
+# ── Step 10: Directory structure + .env ──────────────────────────
 echo ""
-echo "▸ Step 10/12: Creating directory structure..."
+echo "▸ Step 10/11: Creating directory structure..."
 
-mkdir -p /var/www/scws/{daemon/dist,projects,nginx/projects,duckdns,scripts,logs}
+mkdir -p /var/www/scws/{daemon/dist,projects,nginx/projects,scripts,logs}
+
+# Set ownership to SCWS_USER (daemon runs as non-root)
+chown -R "${SCWS_USER}:${SCWS_USER}" /var/www/scws
 
 # Daemon .env
 cat > /var/www/scws/daemon/.env << EOF
@@ -177,48 +255,36 @@ DATABASE_URL=postgresql://scws:${DB_PASSWORD}@localhost:5432/scws_daemon
 PORT=4000
 DASHBOARD_TOKEN=${DASHBOARD_TOKEN}
 SCWS_DB_PASSWORD=${DB_PASSWORD}
+SCWS_BASE_URL=http://${TAILSCALE_IP}
 NODE_ENV=production
 EOF
 
 chmod 600 /var/www/scws/daemon/.env
+chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/daemon/.env
 
 echo "  ✓ Directory structure created"
 
-# ── Step 11: DuckDNS + Let's Encrypt ─────────────────────────────
+# ── Step 11: nginx (HTTP only, Tailscale) ─────────────────────────
 echo ""
-echo "▸ Step 11/12: Setting up DuckDNS and SSL..."
+echo "▸ Step 11/11: Configuring nginx..."
 
-# DuckDNS update script
-cat > /var/www/scws/duckdns/update.sh << EOF
-#!/bin/bash
-echo url="https://www.duckdns.org/update?domains=${DUCKDNS_DOMAIN}&token=${DUCKDNS_TOKEN}&ip=" | curl -s -o /var/www/scws/duckdns/duck.log -K -
-EOF
-chmod +x /var/www/scws/duckdns/update.sh
-
-# Run once to set IP
-/var/www/scws/duckdns/update.sh
-
-# Add cron for DuckDNS
-(crontab -l 2>/dev/null | grep -v "duckdns" ; echo "*/5 * * * * /var/www/scws/duckdns/update.sh >/dev/null 2>&1") | crontab -
-
-echo "  ✓ DuckDNS configured (${DUCKDNS_DOMAIN}.duckdns.org)"
-
-# nginx config (HTTP first, certbot adds SSL)
-cat > /etc/nginx/sites-available/scws << 'NGINX'
+cat > /etc/nginx/sites-available/scws << NGINX
 server {
     listen 80;
-    server_name scws.duckdns.org;
+    server_name ${TAILSCALE_IP} ${TAILSCALE_HOSTNAME};
 
     # SCWS dashboard at root
     location / {
         proxy_pass http://127.0.0.1:4000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
     }
 
     # Per-project configs
@@ -226,50 +292,58 @@ server {
 }
 NGINX
 
-# Enable site
 ln -sf /etc/nginx/sites-available/scws /etc/nginx/sites-enabled/scws
 rm -f /etc/nginx/sites-enabled/default
 
 nginx -t && systemctl reload nginx
 
-# Let's Encrypt SSL (will modify nginx config in-place)
-echo "  Requesting SSL certificate..."
-certbot --nginx -d ${DUCKDNS_DOMAIN}.duckdns.org \
-  --non-interactive --agree-tos -m ${CERTBOT_EMAIL} \
-  --redirect
+echo "  ✓ nginx configured (HTTP only, Tailscale access)"
 
-# Auto-renewal cron
-(crontab -l 2>/dev/null | grep -v "certbot" ; echo "0 3 * * * certbot renew --quiet") | crontab -
+# ── Sudoers for SCWS_USER ────────────────────────────────────────
 
-echo "  ✓ SSL certificate configured"
+cat > /etc/sudoers.d/scws << EOF
+# SPAWN — full passwordless sudo for dev Pi (Tailscale-only access)
+${SCWS_USER} ALL=(ALL) NOPASSWD: ALL
+EOF
 
-# ── Step 12: PM2 setup ───────────────────────────────────────────
-echo ""
-echo "▸ Step 12/12: Setting up PM2..."
+chmod 440 /etc/sudoers.d/scws
 
-# PM2 startup script
-pm2 startup systemd -u root --hp /root 2>/dev/null || true
+echo "  ✓ Sudoers configured for ${SCWS_USER}"
 
-echo "  ✓ PM2 configured for startup"
+# ── PM2 setup (as SCWS_USER) ─────────────────────────────────────
+
+su - "${SCWS_USER}" -c "pm2 startup systemd -u ${SCWS_USER} --hp ${SCWS_HOME}" 2>/dev/null || true
+# The above prints a command to run as root — capture and execute it
+PM2_STARTUP_CMD=$(su - "${SCWS_USER}" -c "pm2 startup systemd -u ${SCWS_USER} --hp ${SCWS_HOME}" 2>&1 | grep "sudo env" || true)
+if [ -n "$PM2_STARTUP_CMD" ]; then
+  eval "$PM2_STARTUP_CMD" 2>/dev/null || true
+fi
+
+echo "  ✓ PM2 configured for startup as ${SCWS_USER}"
 
 # ═══════════════════════════════════════════════════════════════════
 echo ""
 echo "═══════════════════════════════════════════════════════"
-echo "  SCWS Bootstrap Complete!"
+echo "  SPAWN Bootstrap Complete! (Raspberry Pi 5)"
 echo "═══════════════════════════════════════════════════════"
 echo ""
-echo "  Domain:     https://${DUCKDNS_DOMAIN}.duckdns.org"
-echo "  Dashboard:  https://${DUCKDNS_DOMAIN}.duckdns.org"
-echo "  DB User:    scws"
-echo "  DB Pass:    ${DB_PASSWORD}"
-echo "  Token:      ${DASHBOARD_TOKEN}"
+echo "  Tailscale IP:  ${TAILSCALE_IP}"
+echo "  Hostname:      ${TAILSCALE_HOSTNAME}"
+echo "  Dashboard:     http://${TAILSCALE_IP}"
+echo "  DB User:       scws"
+echo "  DB Pass:       ${DB_PASSWORD}"
+echo "  Token:         ${DASHBOARD_TOKEN}"
+echo "  Run-as user:   ${SCWS_USER}"
 echo ""
 echo "  Next steps:"
-echo "  1. Deploy the daemon:  scp dist/* root@<IP>:/var/www/scws/daemon/dist/"
-echo "  2. Start daemon:       cd /var/www/scws/daemon && pm2 start dist/index.cjs --name scws-daemon"
-echo "  3. Save PM2:           pm2 save"
-echo "  4. Auth Claude CLI:    claude  (interactive, one-time)"
-echo "  5. Auth GitHub CLI:    gh auth login  (interactive, one-time)"
+echo "  1. Build on Windows:   npx tsx script/build.ts"
+echo "  2. Deploy daemon:      scp dist/* ${SCWS_USER}@${TAILSCALE_IP}:/var/www/scws/daemon/dist/"
+echo "  3. Copy package.json:  scp package.json ${SCWS_USER}@${TAILSCALE_IP}:/var/www/scws/daemon/"
+echo "  4. Install on Pi:      cd /var/www/scws/daemon && npm install --omit=dev"
+echo "  5. Start daemon:       pm2 start dist/index.cjs --name scws-daemon"
+echo "  6. Save PM2:           pm2 save"
+echo "  7. Auth Claude CLI:    claude  (interactive, one-time)"
+echo "  8. Auth GitHub CLI:    gh auth login  (interactive, one-time)"
 echo ""
 echo "  SAVE THIS OUTPUT — it contains your DB password!"
 echo "═══════════════════════════════════════════════════════"

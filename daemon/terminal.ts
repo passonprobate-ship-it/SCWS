@@ -14,11 +14,15 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // ── Types ─────────────────────────────────────────────────────────
 
+const PING_INTERVAL_MS = 25_000; // 25s — under nginx's 60s default
+
 interface TerminalSession {
   id: string;
   pty: ReturnType<typeof pty.spawn>;
   ws: WebSocket;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  pingTimer: ReturnType<typeof setInterval> | null;
+  alive: boolean;
   createdAt: number;
 }
 
@@ -79,12 +83,12 @@ export function initTerminalServer(
       rows: 24,
       cwd: "/var/www/scws",
       env: {
-        HOME: "/root",
+        HOME: process.env.HOME || "/home/codeman",
         TERM: "xterm-256color",
-        PATH: "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin",
+        PATH: `${process.env.HOME || "/home/codeman"}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin`,
         LANG: process.env.LANG || "en_US.UTF-8",
         SHELL: "/bin/bash",
-        USER: "root",
+        USER: process.env.USER || "codeman",
       },
     });
 
@@ -93,11 +97,25 @@ export function initTerminalServer(
       pty: shell,
       ws,
       idleTimer: null,
+      pingTimer: null,
+      alive: true,
       createdAt: Date.now(),
     };
 
     sessions.set(id, session);
     resetIdleTimer(session);
+
+    // Keepalive: ping every 25s to prevent nginx/proxy from dropping the connection
+    ws.on("pong", () => { session.alive = true; });
+    session.pingTimer = setInterval(() => {
+      if (!session.alive) {
+        log(`Terminal session ${id} ping timeout — closing`, "terminal");
+        ws.terminate();
+        return;
+      }
+      session.alive = false;
+      if (ws.readyState === WebSocket.OPEN) ws.ping();
+    }, PING_INTERVAL_MS);
 
     // PTY output → WebSocket
     shell.onData((data: string) => {
@@ -175,6 +193,7 @@ function cleanup(id: string): void {
   if (!session) return;
 
   if (session.idleTimer) clearTimeout(session.idleTimer);
+  if (session.pingTimer) clearInterval(session.pingTimer);
 
   try { session.pty.kill(); } catch { /* already dead */ }
   try {

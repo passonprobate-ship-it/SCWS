@@ -86,3 +86,46 @@ export const daemonConfig = pgTable("daemon_config", {
 });
 
 export type DaemonConfig = typeof daemonConfig.$inferSelect;
+
+// ── Channels ────────────────────────────────────────────────────
+
+export const channels = pgTable("channels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(), // "telegram" | "email"
+  name: text("name").notNull(),
+  config: text("config").notNull().default("{}"),
+  enabled: integer("enabled").notNull().default(1),
+  verified: integer("verified").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  statusMessage: text("status_message"),
+  lastTestedAt: timestamp("last_tested_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertChannelSchema = createInsertSchema(channels).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type Channel = typeof channels.$inferSelect;
+export type InsertChannel = z.infer<typeof insertChannelSchema>;
+
+// ── Notifications ───────────────────────────────────────────────
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  channelId: varchar("channel_id").notNull(),
+  event: text("event").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("sent"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;

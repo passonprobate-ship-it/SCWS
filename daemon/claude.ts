@@ -1,10 +1,14 @@
 import { spawn, type ChildProcess } from "child_process";
+import { writeFile, rm } from "fs/promises";
 import type { Response } from "express";
 import { storage } from "./storage.js";
 import { log } from "./logger.js";
+import { readClaudeSettings, type McpServerConfig } from "./mcp.js";
+import { notify } from "./channels.js";
 
 const PROJECTS_DIR = "/var/www/scws/projects";
-const CLAUDE_PATH = "/root/.local/bin/claude";
+const USER_HOME = process.env.HOME || "/home/codeman";
+const CLAUDE_PATH = `${USER_HOME}/.local/bin/claude`;
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -83,6 +87,31 @@ export async function startClaudeRun(opts: StartClaudeOpts): Promise<{ runId: st
     args.push("--max-turns", String(maxTurns));
   }
 
+  // Per-project MCP overrides: filter global settings.json servers
+  let mcpTmpConfig: string | null = null;
+  if (projectName) {
+    const overrideJson = await storage.getConfig(`mcp-override:${projectName}`);
+    if (overrideJson) {
+      try {
+        const override = JSON.parse(overrideJson);
+        const settings = await readClaudeSettings();
+        const allServers = settings.mcpServers || {};
+        const filtered: Record<string, McpServerConfig> = {};
+        for (const [name, enabled] of Object.entries(override.servers as Record<string, boolean>)) {
+          if (enabled && allServers[name]) {
+            filtered[name] = allServers[name];
+          }
+        }
+        mcpTmpConfig = `/tmp/mcp-config-${run.id}.json`;
+        await writeFile(mcpTmpConfig, JSON.stringify({ mcpServers: filtered }));
+        args.push("--mcp-config", mcpTmpConfig);
+        log(`Using per-project MCP config (${Object.keys(filtered).length} servers)`, "claude");
+      } catch (err: any) {
+        log(`Failed to build MCP config: ${err.message}`, "claude");
+      }
+    }
+  }
+
   const cwd = projectName ? `${PROJECTS_DIR}/${projectName}` : "/var/www/scws";
   log(`Starting Claude [${mode}] on "${projectName || 'system'}": ${prompt.substring(0, 100)}...`, "claude");
 
@@ -93,7 +122,7 @@ export async function startClaudeRun(opts: StartClaudeOpts): Promise<{ runId: st
   const scriptCmd = [CLAUDE_PATH, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
   const child = spawn("script", ["-qec", scriptCmd, "/dev/null"], {
     cwd,
-    env: { ...process.env, HOME: "/root", PATH: `${process.env.PATH}:/root/.local/bin` },
+    env: { ...process.env, HOME: USER_HOME, PATH: `${process.env.PATH}:${USER_HOME}/.local/bin` },
     stdio: ["pipe", "pipe", "pipe"],
     timeout: 600_000,
   });
@@ -192,11 +221,15 @@ export async function startClaudeRun(opts: StartClaudeOpts): Promise<{ runId: st
       details: `[${mode}] ${prompt.substring(0, 200)} (${Math.round(duration / 1000)}s)`,
     });
 
+    const notifyEvent = activeRun.status === "completed" ? "claude_completed" : "claude_failed";
+    notify(notifyEvent, `Claude ${activeRun.status} on "${projectName || "system"}" (${Math.round(duration / 1000)}s)`).catch(() => {});
+
     log(`Claude ${activeRun.status} on "${projectName || 'system'}" in ${Math.round(duration / 1000)}s`, "claude");
 
     // Cleanup
     activeRunsByRunId.delete(run.id);
     if (projectName) projectLocks.delete(projectName);
+    if (mcpTmpConfig) rm(mcpTmpConfig, { force: true }).catch(() => {});
   });
 
   child.on("error", async (err) => {

@@ -1,11 +1,13 @@
 import { eq, desc, isNotNull, sql as dsql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
-  projects, claudeRuns, activityLog, daemonConfig,
+  projects, claudeRuns, activityLog, daemonConfig, channels, notifications,
   type Project, type InsertProject,
   type ClaudeRun, type InsertClaudeRun,
   type Activity, type InsertActivity,
   type DaemonConfig,
+  type Channel, type InsertChannel,
+  type Notification, type InsertNotification,
 } from "../shared/schema.js";
 
 export interface IStorage {
@@ -36,6 +38,17 @@ export interface IStorage {
   getConfig(key: string): Promise<string | undefined>;
   setConfig(key: string, value: string): Promise<void>;
   getAllConfig(): Promise<DaemonConfig[]>;
+
+  // Channels
+  getChannels(): Promise<Channel[]>;
+  getChannel(id: string): Promise<Channel | undefined>;
+  createChannel(data: InsertChannel): Promise<Channel>;
+  updateChannel(id: string, data: Partial<InsertChannel>): Promise<Channel | undefined>;
+  deleteChannel(id: string): Promise<void>;
+
+  // Notifications
+  logNotification(data: InsertNotification): Promise<Notification>;
+  getNotifications(limit?: number): Promise<Notification[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -175,6 +188,46 @@ export class DatabaseStorage implements IStorage {
 
   async getAllConfig(): Promise<DaemonConfig[]> {
     return db.select().from(daemonConfig);
+  }
+
+  // ── Channels ───────────────────────────────────────────────────
+
+  async getChannels(): Promise<Channel[]> {
+    return db.select().from(channels).orderBy(desc(channels.createdAt));
+  }
+
+  async getChannel(id: string): Promise<Channel | undefined> {
+    const [row] = await db.select().from(channels).where(eq(channels.id, id));
+    return row;
+  }
+
+  async createChannel(data: InsertChannel): Promise<Channel> {
+    const [row] = await db.insert(channels).values(data).returning();
+    return row;
+  }
+
+  async updateChannel(id: string, data: Partial<InsertChannel>): Promise<Channel | undefined> {
+    const [row] = await db
+      .update(channels)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(channels.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteChannel(id: string): Promise<void> {
+    await db.delete(channels).where(eq(channels.id, id));
+  }
+
+  // ── Notifications ──────────────────────────────────────────────
+
+  async logNotification(data: InsertNotification): Promise<Notification> {
+    const [row] = await db.insert(notifications).values(data).returning();
+    return row;
+  }
+
+  async getNotifications(limit = 50): Promise<Notification[]> {
+    return db.select().from(notifications).orderBy(desc(notifications.createdAt)).limit(limit);
   }
 }
 
