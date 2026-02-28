@@ -63,7 +63,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || "";
 if (!DASHBOARD_TOKEN) {
-  log("WARNING: DASHBOARD_TOKEN is empty — API will reject all requests", "startup");
+  log("FATAL: DASHBOARD_TOKEN is not set — refusing to start", "startup");
+  process.exit(1);
 }
 
 function safeEqual(a: string, b: string): boolean {

@@ -13,6 +13,12 @@ import { notify } from "./channels.js";
 const execFileAsync = promisify(execFile);
 
 const PROJECTS_DIR = "/var/www/scws/projects";
+const SCWS_DB_PASSWORD = process.env.SCWS_DB_PASSWORD;
+
+function requireDbPassword(): string {
+  if (!SCWS_DB_PASSWORD) throw new Error("SCWS_DB_PASSWORD env var is not set — cannot create database URLs");
+  return SCWS_DB_PASSWORD;
+}
 
 interface CreateProjectOpts {
   name: string;
@@ -340,7 +346,7 @@ export async function importFromUrl(repoUrl: string): Promise<Project> {
     dbName = `${name.replace(/-/g, "_")}_db`;
     try {
       await execFileAsync("sudo", ["-u", "postgres", "psql", "-c",
-        `CREATE DATABASE ${dbName} OWNER scws;`], { timeout: 10_000 });
+        `CREATE DATABASE "${dbName}" OWNER scws;`], { timeout: 10_000 });
       log(`Created database: ${dbName}`, "project");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -356,7 +362,7 @@ export async function importFromUrl(repoUrl: string): Promise<Project> {
   // Generate .env
   const envLines = [`PORT=${port}`, `BASE_URL=/${name}`, `NODE_ENV=production`];
   if (dbName) {
-    envLines.push(`DATABASE_URL=postgresql://scws:${process.env.SCWS_DB_PASSWORD || "scws"}@localhost:5432/${dbName}`);
+    envLines.push(`DATABASE_URL=postgresql://scws:${requireDbPassword()}@localhost:5432/${dbName}`);
   }
   if (framework === "next") {
     envLines.push(`AUTH_SECRET=${randomBytes(32).toString("hex")}`);
@@ -479,7 +485,7 @@ export async function createProject(opts: CreateProjectOpts): Promise<Project> {
     dbName = `${name.replace(/-/g, "_")}_db`;
     try {
       await execFileAsync("sudo", ["-u", "postgres", "psql", "-c",
-        `CREATE DATABASE ${dbName} OWNER scws;`], { timeout: 10_000 });
+        `CREATE DATABASE "${dbName}" OWNER scws;`], { timeout: 10_000 });
       log(`Created database: ${dbName}`, "project");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -494,7 +500,7 @@ export async function createProject(opts: CreateProjectOpts): Promise<Project> {
     `NODE_ENV=production`,
   ];
   if (dbName) {
-    envLines.push(`DATABASE_URL=postgresql://scws:${process.env.SCWS_DB_PASSWORD || "scws"}@localhost:5432/${dbName}`);
+    envLines.push(`DATABASE_URL=postgresql://scws:${requireDbPassword()}@localhost:5432/${dbName}`);
   }
   await writeFile(`${projectDir}/.env`, envLines.join("\n") + "\n", "utf-8");
 
@@ -559,7 +565,7 @@ export async function startProject(name: string): Promise<void> {
 
   const envVars = JSON.parse(project.envVars) as Record<string, string>;
   if (project.dbName) {
-    envVars.DATABASE_URL = `postgresql://scws:${process.env.SCWS_DB_PASSWORD || "scws"}@localhost:5432/${project.dbName}`;
+    envVars.DATABASE_URL = `postgresql://scws:${requireDbPassword()}@localhost:5432/${project.dbName}`;
   }
 
   await pm2Start(name, project.entryFile, project.port, envVars, project.startCommand);
@@ -671,7 +677,7 @@ export async function deleteProject(name: string): Promise<void> {
   if (project.dbName) {
     try {
       await execFileAsync("sudo", ["-u", "postgres", "psql", "-c",
-        `DROP DATABASE IF EXISTS ${project.dbName};`], { timeout: 10_000 });
+        `DROP DATABASE IF EXISTS "${project.dbName}";`], { timeout: 10_000 });
       log(`Dropped database: ${project.dbName}`, "project");
     } catch (err: unknown) {
       log(`Failed to drop database ${project.dbName}: ${err}`, "error");
