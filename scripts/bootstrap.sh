@@ -15,6 +15,8 @@ DASHBOARD_TOKEN="b3089956e81b8b8c11979d66b8e31776178f67d79da18a5670374810433d2ad
 DB_PASSWORD="scws_$(openssl rand -hex 8)"
 MCP_SERVER_URL="https://passoncloud.duckdns.org/mcp"
 MCP_SERVER_TOKEN="2c86de7bd448b5f21614599cae27ceccdca921756ec2f8d1ed3e4c8a8e178ce8"
+DUCKDNS_DOMAIN=""                # e.g. "spawn" — leave empty to skip DuckDNS
+DUCKDNS_TOKEN=""                 # DuckDNS token — leave empty to skip
 
 SCWS_HOME=$(eval echo "~${SCWS_USER}")
 
@@ -29,7 +31,7 @@ echo "════════════════════════�
 
 # ── Step 1: System packages ───────────────────────────────────────
 echo ""
-echo "▸ Step 1/11: Installing system packages..."
+echo "▸ Step 1/15: Installing system packages..."
 
 apt update && apt upgrade -y
 apt install -y \
@@ -37,13 +39,16 @@ apt install -y \
   curl wget git build-essential \
   python3 python3-pip python3-venv \
   jq htop tmux unzip \
-  software-properties-common
+  software-properties-common \
+  ffmpeg imagemagick \
+  ripgrep \
+  chromium-browser
 
 echo "  ✓ System packages installed"
 
 # ── Step 2: Tailscale ────────────────────────────────────────────
 echo ""
-echo "▸ Step 2/11: Installing Tailscale..."
+echo "▸ Step 2/15: Installing Tailscale..."
 
 if ! command -v tailscale &>/dev/null; then
   curl -fsSL https://tailscale.com/install.sh | sh
@@ -64,7 +69,7 @@ echo "  Hostname:     ${TAILSCALE_HOSTNAME}"
 
 # ── Step 3: Firewall (Tailscale-friendly) ─────────────────────────
 echo ""
-echo "▸ Step 3/11: Configuring firewall..."
+echo "▸ Step 3/15: Configuring firewall..."
 
 # Allow Tailscale interface, block public access
 ufw default deny incoming
@@ -78,7 +83,7 @@ echo "  ✓ Firewall configured (Tailscale + SSH + HTTP)"
 
 # ── Step 4: fail2ban ──────────────────────────────────────────────
 echo ""
-echo "▸ Step 4/11: Configuring fail2ban..."
+echo "▸ Step 4/15: Configuring fail2ban..."
 
 cat > /etc/fail2ban/jail.local << 'JAIL'
 [DEFAULT]
@@ -99,7 +104,7 @@ echo "  ✓ fail2ban configured"
 
 # ── Step 5: Node.js 20 ───────────────────────────────────────────
 echo ""
-echo "▸ Step 5/11: Installing Node.js 20..."
+echo "▸ Step 5/15: Installing Node.js 20..."
 
 if ! command -v node &>/dev/null; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -112,7 +117,7 @@ echo "  ✓ Node.js installed"
 
 # ── Step 6: Global npm tools ─────────────────────────────────────
 echo ""
-echo "▸ Step 6/11: Installing global npm tools..."
+echo "▸ Step 6/15: Installing global npm tools..."
 
 npm install -g pm2 typescript tsx esbuild
 
@@ -120,7 +125,7 @@ echo "  ✓ PM2, TypeScript, tsx, esbuild installed globally"
 
 # ── Step 7: Claude CLI ───────────────────────────────────────────
 echo ""
-echo "▸ Step 7/11: Installing Claude CLI..."
+echo "▸ Step 7/15: Installing Claude CLI..."
 
 if ! su - "${SCWS_USER}" -c "command -v claude" &>/dev/null; then
   su - "${SCWS_USER}" -c "curl -fsSL https://claude.ai/install.sh | bash"
@@ -151,7 +156,7 @@ echo "  NOTE: Run 'claude' interactively to authenticate with Claude Max"
 
 # ── Step 8: GitHub CLI ───────────────────────────────────────────
 echo ""
-echo "▸ Step 8/11: Installing GitHub CLI..."
+echo "▸ Step 8/15: Installing GitHub CLI..."
 
 if ! command -v gh &>/dev/null; then
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
@@ -164,9 +169,49 @@ fi
 echo "  ✓ GitHub CLI installed"
 echo "  NOTE: Run 'gh auth login' as ${SCWS_USER} after bootstrap"
 
-# ── Step 9: PostgreSQL ───────────────────────────────────────────
+# ── Step 9: Docker CE + Redis ────────────────────────────────────
 echo ""
-echo "▸ Step 9/11: Configuring PostgreSQL..."
+echo "▸ Step 9/15: Installing Docker CE + Redis..."
+
+# Docker CE
+if ! command -v docker &>/dev/null; then
+  curl -fsSL https://get.docker.com | sh
+  usermod -aG docker "${SCWS_USER}"
+fi
+systemctl enable docker
+
+# Redis
+if ! command -v redis-server &>/dev/null; then
+  apt install -y redis-server
+fi
+systemctl enable redis-server
+systemctl start redis-server
+
+echo "  ✓ Docker CE installed (user ${SCWS_USER} added to docker group)"
+echo "  ✓ Redis installed and running"
+
+# ── Step 10: Go + GPIO libraries ─────────────────────────────────
+echo ""
+echo "▸ Step 10/15: Installing Go + GPIO libraries..."
+
+# Go (latest stable via snap or manual — use apt for simplicity)
+if ! command -v go &>/dev/null; then
+  apt install -y golang-go
+fi
+
+# GPIO libraries for Raspberry Pi hardware access
+apt install -y \
+  libgpiod-dev gpiod \
+  python3-gpiod python3-lgpio python3-rpi.gpio \
+  i2c-tools python3-smbus \
+  2>/dev/null || true  # Some packages may not exist on all Ubuntu versions
+
+echo "  Go $(go version 2>/dev/null | awk '{print $3}' || echo 'installed')"
+echo "  ✓ Go + GPIO libraries installed"
+
+# ── Step 11: PostgreSQL ──────────────────────────────────────────
+echo ""
+echo "▸ Step 11/15: Configuring PostgreSQL..."
 
 systemctl enable postgresql
 systemctl start postgresql
@@ -179,7 +224,7 @@ sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='scws_daemon'
 
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE scws_daemon TO scws;"
 
-# Create tables matching Drizzle schema (shared/schema.ts)
+# Create all 6 tables matching Drizzle schema (shared/schema.ts)
 sudo -u postgres psql scws_daemon << 'SQL'
 CREATE TABLE IF NOT EXISTS projects (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -233,16 +278,43 @@ CREATE TABLE IF NOT EXISTS daemon_config (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS channels (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL DEFAULT '{}',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  verified INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  status_message TEXT,
+  last_tested_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  channel_id VARCHAR NOT NULL,
+  event TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sent',
+  error TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_channel ON notifications(channel_id);
+
 GRANT ALL ON ALL TABLES IN SCHEMA public TO scws;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO scws;
 SQL
 
-echo "  ✓ PostgreSQL configured (user: scws, db: scws_daemon, tables created)"
+echo "  ✓ PostgreSQL configured (user: scws, db: scws_daemon, 6 tables created)"
 echo "  DB Password: ${DB_PASSWORD}"
 
-# ── Step 10: Directory structure + .env ──────────────────────────
+# ── Step 12: Directory structure + .env ──────────────────────────
 echo ""
-echo "▸ Step 10/11: Creating directory structure..."
+echo "▸ Step 12/15: Creating directory structure..."
 
 mkdir -p /var/www/scws/{daemon/dist,projects,nginx/projects,scripts,logs}
 
@@ -264,9 +336,9 @@ chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/daemon/.env
 
 echo "  ✓ Directory structure created"
 
-# ── Step 11: nginx (HTTP only, Tailscale) ─────────────────────────
+# ── Step 13: nginx (HTTP only, Tailscale) ─────────────────────────
 echo ""
-echo "▸ Step 11/11: Configuring nginx..."
+echo "▸ Step 13/15: Configuring nginx..."
 
 cat > /etc/nginx/sites-available/scws << NGINX
 server {
@@ -299,7 +371,9 @@ nginx -t && systemctl reload nginx
 
 echo "  ✓ nginx configured (HTTP only, Tailscale access)"
 
-# ── Sudoers for SCWS_USER ────────────────────────────────────────
+# ── Step 14: Sudoers + PM2 ──────────────────────────────────────
+echo ""
+echo "▸ Step 14/15: Configuring sudoers + PM2..."
 
 cat > /etc/sudoers.d/scws << EOF
 # SPAWN — full passwordless sudo for dev Pi (Tailscale-only access)
@@ -310,8 +384,6 @@ chmod 440 /etc/sudoers.d/scws
 
 echo "  ✓ Sudoers configured for ${SCWS_USER}"
 
-# ── PM2 setup (as SCWS_USER) ─────────────────────────────────────
-
 su - "${SCWS_USER}" -c "pm2 startup systemd -u ${SCWS_USER} --hp ${SCWS_HOME}" 2>/dev/null || true
 # The above prints a command to run as root — capture and execute it
 PM2_STARTUP_CMD=$(su - "${SCWS_USER}" -c "pm2 startup systemd -u ${SCWS_USER} --hp ${SCWS_HOME}" 2>&1 | grep "sudo env" || true)
@@ -320,6 +392,40 @@ if [ -n "$PM2_STARTUP_CMD" ]; then
 fi
 
 echo "  ✓ PM2 configured for startup as ${SCWS_USER}"
+
+# ── Step 15: Cron jobs (healthcheck + DuckDNS) ──────────────────
+echo ""
+echo "▸ Step 15/15: Setting up cron jobs..."
+
+# Copy healthcheck script
+cp "$(dirname "$0")/healthcheck.sh" /var/www/scws/scripts/healthcheck.sh 2>/dev/null || true
+chmod +x /var/www/scws/scripts/healthcheck.sh 2>/dev/null || true
+chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/scripts/healthcheck.sh 2>/dev/null || true
+
+# Healthcheck cron — every 5 minutes
+HEALTH_CRON="*/5 * * * * /var/www/scws/scripts/healthcheck.sh"
+(su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true) | grep -qF "healthcheck.sh" || \
+  (su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true; echo "${HEALTH_CRON}") | su - "${SCWS_USER}" -c "crontab -"
+
+echo "  ✓ Healthcheck cron installed (every 5 minutes)"
+
+# DuckDNS dynamic DNS (optional)
+if [ -n "${DUCKDNS_DOMAIN}" ] && [ -n "${DUCKDNS_TOKEN}" ]; then
+  cat > /var/www/scws/scripts/duckdns-update.sh << DUCKDNS
+#!/bin/bash
+echo url="https://www.duckdns.org/update?domains=${DUCKDNS_DOMAIN}&token=${DUCKDNS_TOKEN}&ip=" | curl -k -o /var/www/scws/logs/duckdns.log -K -
+DUCKDNS
+  chmod +x /var/www/scws/scripts/duckdns-update.sh
+  chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/scripts/duckdns-update.sh
+
+  DUCKDNS_CRON="*/5 * * * * /var/www/scws/scripts/duckdns-update.sh"
+  (su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true) | grep -qF "duckdns-update.sh" || \
+    (su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true; echo "${DUCKDNS_CRON}") | su - "${SCWS_USER}" -c "crontab -"
+
+  echo "  ✓ DuckDNS cron installed (domain: ${DUCKDNS_DOMAIN})"
+else
+  echo "  ⊘ DuckDNS skipped (DUCKDNS_DOMAIN/DUCKDNS_TOKEN not set)"
+fi
 
 # ═══════════════════════════════════════════════════════════════════
 echo ""
@@ -334,6 +440,19 @@ echo "  DB User:       scws"
 echo "  DB Pass:       ${DB_PASSWORD}"
 echo "  Token:         ${DASHBOARD_TOKEN}"
 echo "  Run-as user:   ${SCWS_USER}"
+echo ""
+echo "  Installed:"
+echo "    nginx, PostgreSQL 16, fail2ban, Tailscale"
+echo "    Node.js 20, PM2, TypeScript, tsx, esbuild"
+echo "    Claude CLI, GitHub CLI"
+echo "    Docker CE, Redis, Go"
+echo "    ffmpeg, ImageMagick, ripgrep, chromium"
+echo "    GPIO libs (libgpiod, i2c-tools)"
+echo ""
+echo "  Database: 6 tables (projects, claude_runs, activity_log,"
+echo "    daemon_config, channels, notifications)"
+echo ""
+echo "  Cron: healthcheck (5min)$([ -n "${DUCKDNS_DOMAIN}" ] && echo ", DuckDNS (5min)")"
 echo ""
 echo "  Next steps:"
 echo "  1. Build on Windows:   npx tsx script/build.ts"

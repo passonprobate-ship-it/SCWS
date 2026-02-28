@@ -82,6 +82,8 @@ PostgreSQL user `scws`, database `scws_daemon`.
 | `claude_runs` | Your execution history (prompt, output, mode, session, duration) |
 | `activity_log` | All actions (created, built, deployed, started, stopped) |
 | `daemon_config` | Key-value daemon settings |
+| `channels` | Notification channels (Telegram, Email) with JSON config, status, verification |
+| `notifications` | Notification delivery log (event, channel, status, error) |
 
 Connection: `postgresql://scws:<password>@localhost:5432/scws_daemon`
 
