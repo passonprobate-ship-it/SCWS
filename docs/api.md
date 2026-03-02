@@ -262,6 +262,32 @@ Sends a confirmation message to the chat. On success, marks channel as verified 
 | GET | `/api/system` | Disk, memory, uptime, project counts, daemon info |
 | GET | `/api/system/pm2` | PM2 process list (name, pid, status, cpu, memory, restarts) |
 | GET | `/api/activity` | Activity log. Query: `?limit=50` |
+| GET | `/api/metrics/memory` | Historical memory snapshots. Query: `?hours=24` |
+
+### GET /api/metrics/memory — Response
+
+```json
+{
+  "hours": 24,
+  "count": 144,
+  "snapshots": [
+    {
+      "timestamp": "2026-03-01T20:00:00.000Z",
+      "total": 7856,
+      "used": 1024,
+      "available": 6700,
+      "swap_used": 0,
+      "pct": 13,
+      "processes": [
+        { "name": "scws-daemon", "mem": 98 },
+        { "name": "spawn-mcp", "mem": 80 }
+      ]
+    }
+  ]
+}
+```
+
+Snapshots are logged every 10 minutes to the `activity_log` table (action: `memory_snapshot`).
 
 ### GET /api/system — Response
 

@@ -156,19 +156,26 @@ The build bundles most dependencies into the CJS file. Only `node-pty` and `ws` 
 
 ## Fresh Pi Provisioning
 
-For a brand-new Pi, run `scripts/bootstrap.sh` as root. It performs 11 steps:
+For a brand-new Pi, run `scripts/bootstrap.sh` as root. It performs 28 steps including:
 
-1. System packages (nginx, PostgreSQL, fail2ban, build tools)
-2. Tailscale VPN
-3. Firewall (UFW — Tailscale + SSH + HTTP only)
-4. fail2ban (SSH brute-force protection)
-5. Node.js 20 (via NodeSource)
-6. Global npm tools (PM2, TypeScript, tsx, esbuild)
-7. Claude CLI (installed for the `codeman` user)
-8. GitHub CLI
-9. PostgreSQL (user: scws, database: scws_daemon, tables created)
-10. Directory structure + .env file
+1. Hostname, sudoers, hardware groups
+2. APT repositories (NodeSource, GitHub CLI, Tailscale, Docker)
+3. System packages (nginx, PostgreSQL, Redis, fail2ban, build tools, Docker, Go, Python, etc.)
+4. Chromium (snap), Node.js global packages (PM2, TypeScript, tsx, esbuild)
+5. PM2 log rotation + startup hook
+6. Bun runtime
+7. PostgreSQL setup (user: scws, databases: scws_daemon, spawn_cortex, solbot_db)
+8. Directory structure, 4GB swap
+9. Kernel tuning (`vm.swappiness=5`, `vm.vfs_cache_pressure=50`)
+10. GPIO/I2C/SPI/PWM hardware config
 11. nginx (HTTP reverse proxy, Tailscale-only access)
+12. UFW firewall, fail2ban
+13. Backup scripts + cron (local + off-site, 12 backup types)
+14. Python GPIO libraries, pinctrl
+15. PM2 ecosystem config with daemon heap cap (192MB)
+16. OOM killer prioritization (systemd override + per-process script)
+17. Docker disabled at boot (saves ~128MB idle)
+18. PostgreSQL max_connections reduced to 30
 
 After bootstrap, manually:
 

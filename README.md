@@ -74,7 +74,8 @@ SCWS/
 ├── script/
 │   └── build.ts             esbuild bundler → dist/index.cjs + dist/dashboard.html
 ├── scripts/
-│   ├── bootstrap.sh         Fresh Pi provisioning (15 steps)
+│   ├── bootstrap.sh         Fresh Pi provisioning (28 steps, includes memory management)
+│   ├── set-oom-scores.sh    OOM killer priority assignment (run on startup)
 │   ├── healthcheck.sh       Cron health monitor (services, disk, memory)
 │   └── duckdns-update.sh    Dynamic DNS updater
 ├── templates/
@@ -112,13 +113,30 @@ Additional shortcuts: `Ctrl+K` command palette, `Ctrl+N` new project, `Ctrl+I` i
 - **[API Reference](docs/api.md)** — All 46 REST endpoints with params and responses
 - **[Operations Runbook](docs/operations.md)** — Deploy, monitor, troubleshoot, backup
 
+## Memory Management
+
+SPAWN includes defense-in-depth memory management for the Pi's 8GB RAM:
+
+- **Per-process heap caps** — Every PM2 project gets `--max-old-space-size` and `--max-memory-restart` automatically via `pm2Start()` (default 256MB heap, 307MB restart). The daemon itself runs with a 192MB cap.
+- **Build isolation** — Build operations use 512MB heap (not 4GB) and a mutex lock prevents concurrent builds.
+- **Kernel tuning** — `vm.swappiness=5`, `vm.vfs_cache_pressure=50` via `/etc/sysctl.d/99-spawn-memory.conf`
+- **OOM prioritization** — PM2 god daemon protected at -800, scws-daemon at -500, spawn-mcp at -300, projects at +300 (expendable, auto-restart)
+- **Docker disabled at boot** — Saves ~128MB idle. Start on demand with `sudo systemctl start docker`.
+- **PostgreSQL** — `max_connections=30` (system never exceeds ~8 active)
+- **Tiered watchdog** — 70% warn, 85% auto-stop idle projects, 93% emergency stop all + drop caches
+- **Metrics** — `GET /api/metrics/memory` returns historical snapshots, logged every 10 minutes to `activity_log`
+
+See [Operations Runbook](docs/operations.md) for memory management commands.
+
 ## Hosted Projects
 
 | Project | Port | Description |
 |---------|------|-------------|
-| artsys | 5001 | Art inventory management system |
 | spawn-cortex | 5002 | System monitoring + cron scheduling + webhooks |
 | gpio-toolkit | 5010 | GPIO REST API for Pi hardware control |
+| galleria | 5011 | Image gallery viewer with masonry layout |
+| solbot | 5012 | Solana wallet manager + autonomous trading bot |
+| spawn-mcp | 5020 | Local MCP server for Claude Code |
 
 ## License
 

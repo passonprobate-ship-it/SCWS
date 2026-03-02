@@ -204,9 +204,11 @@ PM2 is configured for auto-startup via systemd (set up by bootstrap.sh).
 
 | Project | Port | PM2 Name | Database | Description |
 |---------|------|----------|----------|-------------|
-| artsys | 5001 | scws-artsys | artsys | Art inventory management |
 | spawn-cortex | 5002 | scws-spawn-cortex | spawn_cortex | System monitoring + cron + webhooks |
 | gpio-toolkit | 5010 | scws-gpio-toolkit | — | GPIO REST API for Pi hardware |
+| galleria | 5011 | scws-galleria | — | Image gallery viewer |
+| solbot | 5012 | scws-solbot | solbot_db | Solana wallet manager + trading bot |
+| spawn-mcp | 5020 | spawn-mcp | — | Local MCP server for Claude Code |
 
 Access via: `http://100.89.2.95/<project-name>/`
 
@@ -220,10 +222,88 @@ spawn-cortex is embedded in the SPAWN dashboard via iframe (Ctrl+6). It's a sepa
 - **Database tables**: `scheduled_tasks`, `task_runs`, `webhooks`, `webhook_events`, `notification_channels`, `notifications`
 - **Logs**: `pm2 logs spawn-cortex --lines 30`
 
+## Memory Management
+
+### Per-Process Limits
+
+Every project started via the daemon gets automatic heap caps:
+
+| Process | Heap Cap | PM2 Restart |
+|---------|----------|-------------|
+| scws-daemon | 192 MB | 200M |
+| spawn-mcp | 128 MB | 150M |
+| Default project | 256 MB | 307M |
+
+The `pm2Start()` function in `pm2.ts` accepts a `memoryLimitMB` parameter (default 256).
+
+### Build Isolation
+
+- Build heap capped at 512MB (`NODE_OPTIONS: "--max-old-space-size=512"`)
+- Mutex lock prevents concurrent builds — second build returns an error
+
+### OOM Scores
+
+```bash
+# Apply OOM priorities (also runs on daemon startup)
+/var/www/scws/scripts/set-oom-scores.sh
+
+# Check a process's OOM score
+cat /proc/$(pm2 pid scws-daemon)/oom_score_adj
+```
+
+| Process | Score | Priority |
+|---------|-------|----------|
+| PM2 god daemon | -800 | Most protected (systemd) |
+| scws-daemon | -500 | Heavily protected |
+| spawn-mcp | -300 | Protected |
+| Projects | +300 | Expendable (auto-restart) |
+
+### Kernel Tuning
+
+```bash
+# Check current values
+sysctl vm.swappiness vm.vfs_cache_pressure
+
+# Config: /etc/sysctl.d/99-spawn-memory.conf
+# vm.swappiness=5        (prefer RAM over swap)
+# vm.vfs_cache_pressure=50   (keep inode/dentry cache)
+```
+
+### Docker
+
+Docker is disabled at boot to save ~128MB idle RAM. Start on demand:
+
+```bash
+sudo systemctl start docker
+# To re-disable after use:
+sudo systemctl stop docker containerd
+```
+
+### Tiered Watchdog
+
+The daemon's watchdog monitors system memory and takes escalating action:
+
+| Threshold | Action |
+|-----------|--------|
+| 70% (~5.5 GB) | Log warning + send notification |
+| 85% (~6.8 GB) | Auto-stop projects idle > 5 minutes |
+| 93% (~7.6 GB) | Emergency: stop all non-essential projects, drop filesystem caches |
+
+### Memory Metrics
+
+```bash
+# Query historical memory snapshots (logged every 10 minutes)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://100.89.2.95/api/metrics/memory?hours=24"
+
+# Quick system memory check
+free -h
+```
+
 ## Pi Hardware Info
 
 - **Model**: Raspberry Pi 5, 8GB RAM
 - **Storage**: SD card (monitor disk usage — keep below 80%)
 - **OS**: Ubuntu Server 24.04 ARM64
 - **Network**: Tailscale VPN only (no public internet exposure)
-- **Additional software**: Docker CE (idle), Redis (empty), ffmpeg, ImageMagick, Go, ripgrep, chromium
+- **Additional software**: Docker CE (disabled at boot), Redis (empty), ffmpeg, ImageMagick, Go, ripgrep, chromium
