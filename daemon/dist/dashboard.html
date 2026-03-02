@@ -262,6 +262,11 @@
       cursor: pointer; transition: all .15s;
     }
     .claude-session-tab .tab-close:hover { background: rgba(239,68,68,.2); color: var(--red); }
+    .claude-session-tab.disconnected { border-color: var(--red); color: var(--red); opacity: .7; }
+    .claude-session-tab.disconnected.active { background: rgba(239,68,68,.06); }
+    .claude-session-tab .tab-status-dot { width:6px;height:6px;border-radius:50%;display:inline-block; }
+    .claude-session-tab .tab-status-dot.connected { background:var(--green); }
+    .claude-session-tab .tab-status-dot.disconnected { background:var(--red); }
     .claude-term-wrapper {
       flex: 1; min-height: 0; background: #000; border-radius: var(--radius);
       overflow: hidden; position: relative; display: none;
@@ -811,7 +816,8 @@
             <div class="page-title" style="margin:0;">Claude Sessions</div>
             <span id="sessions-count" style="font-size:11px;color:var(--text-muted);"></span>
           </div>
-          <div class="terminal-header-right">
+          <div class="terminal-header-right" style="display:flex;gap:8px;">
+            <button class="btn btn-sm" id="reconnect-session-btn" onclick="reconnectActiveClaudeSession()" style="display:none;background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green);">Reconnect</button>
             <button class="btn btn-sm btn-danger" id="kill-session-btn" onclick="killActiveClaudeSession()" style="display:none;">Kill Session</button>
           </div>
         </div>
@@ -1839,6 +1845,7 @@ function createClaudeTerminal(projectName) {
         renderClaudeSessionTabs();
         updateSessionsBadge();
       } else if (msg.type === "exit") {
+        entry._exited = true;
         cterm.writeln("\r\n\x1b[33m[Session ended (code " + (msg.code || 0) + ")]\x1b[0m");
         setTimeout(() => {
           if (entry.sessionId && claudeTerminals[entry.sessionId]) {
@@ -1850,20 +1857,25 @@ function createClaudeTerminal(projectName) {
   };
 
   ws.onclose = () => {
-    cterm.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m");
+    if (!entry._exited) {
+      cterm.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
+      entry.disconnected = true;
+      updateReconnectButton();
+      renderClaudeSessionTabs();
+    }
   };
 
   ws.onerror = () => {};
 
-  // Send keystrokes
+  // Send keystrokes — use entry.ws so reconnect swaps the socket transparently
   cterm.onData((data) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", data }));
+    if (entry.ws && entry.ws.readyState === WebSocket.OPEN) {
+      entry.ws.send(JSON.stringify({ type: "input", data }));
     }
   });
 
   // Full clipboard support (copy, paste, image paste) — same as main terminal
-  setupSessionClipboard(cterm, container, () => ws);
+  setupSessionClipboard(cterm, container, () => entry.ws);
 
   claudeTerminals[tmpId] = entry;
   activeClaudeSessionId = tmpId;
@@ -1873,10 +1885,10 @@ function createClaudeTerminal(projectName) {
   ro.observe(container);
   entry._resizeObserver = ro;
 
-  // Also send resize when fit changes
+  // Also send resize when fit changes — use entry.ws for reconnect support
   cterm.onResize(({ cols, rows }) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "resize", cols, rows }));
+    if (entry.ws && entry.ws.readyState === WebSocket.OPEN) {
+      entry.ws.send(JSON.stringify({ type: "resize", cols, rows }));
     }
   });
 
@@ -1896,6 +1908,7 @@ function switchClaudeSession(sessionId) {
   }
   renderClaudeSessionTabs();
   document.getElementById("kill-session-btn").style.display = Object.keys(claudeTerminals).length > 0 ? "" : "none";
+  updateReconnectButton();
 }
 
 function killActiveClaudeSession() {
@@ -1914,6 +1927,71 @@ function killClaudeSessionUI(sessionId) {
   cleanupClaudeSession(sessionId);
 }
 
+function reconnectActiveClaudeSession() {
+  if (activeClaudeSessionId) {
+    reconnectClaudeSession(activeClaudeSessionId);
+  }
+}
+
+function reconnectClaudeSession(sessionId) {
+  const entry = claudeTerminals[sessionId];
+  if (!entry || !entry.sessionId) return;
+  // Close old ws if lingering
+  try { entry.ws.close(); } catch {}
+
+  entry.term.writeln("\r\n\x1b[36m[Reconnecting...]\x1b[0m");
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = proto + "//" + location.host + "/api/claude-terminal?token=" + encodeURIComponent(token)
+    + "&session=" + encodeURIComponent(entry.sessionId)
+    + "&cols=" + entry.term.cols + "&rows=" + entry.term.rows;
+  const ws = new WebSocket(url);
+  entry.ws = ws;
+  entry.disconnected = false;
+
+  ws.onopen = () => {
+    entry.term.writeln("\x1b[32m[Reconnected]\x1b[0m");
+    updateReconnectButton();
+    renderClaudeSessionTabs();
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "output") entry.term.write(msg.data);
+      else if (msg.type === "replay") { entry.term.clear(); entry.term.write(msg.data); }
+      else if (msg.type === "session") {
+        entry.sessionId = msg.id;
+        renderClaudeSessionTabs();
+        updateSessionsBadge();
+      } else if (msg.type === "exit") {
+        entry._exited = true;
+        entry.term.writeln("\r\n\x1b[33m[Session ended]\x1b[0m");
+        setTimeout(() => cleanupClaudeSession(sessionId), 2000);
+      }
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    if (!entry._exited) {
+      entry.term.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
+      entry.disconnected = true;
+      updateReconnectButton();
+      renderClaudeSessionTabs();
+    }
+  };
+  ws.onerror = () => {};
+  // Note: onData and onResize listeners from the original session already use entry.ws,
+  // so they'll automatically use the new WebSocket — no need to re-register them.
+}
+
+function updateReconnectButton() {
+  const btn = document.getElementById("reconnect-session-btn");
+  if (!activeClaudeSessionId) { btn.style.display = "none"; return; }
+  const entry = claudeTerminals[activeClaudeSessionId];
+  btn.style.display = (entry && entry.disconnected) ? "" : "none";
+}
+
 function cleanupClaudeSession(sessionId) {
   const entry = claudeTerminals[sessionId];
   if (!entry) return;
@@ -1930,10 +2008,12 @@ function cleanupClaudeSession(sessionId) {
     activeClaudeSessionId = null;
     document.getElementById("sessions-empty-state").style.display = "";
     document.getElementById("kill-session-btn").style.display = "none";
+    document.getElementById("reconnect-session-btn").style.display = "none";
     document.getElementById("claude-session-tabs").style.display = "none";
   }
   renderClaudeSessionTabs();
   updateSessionsBadge();
+  updateReconnectButton();
 }
 
 function renderClaudeSessionTabs() {
@@ -1948,9 +2028,12 @@ function renderClaudeSessionTabs() {
   document.getElementById("sessions-count").textContent = entries.length + "/" + MAX_CLAUDE_UI_SESSIONS;
   tabBar.innerHTML = entries.map(([sid, s]) => {
     const isActive = sid === activeClaudeSessionId;
+    const isDisconnected = !!s.disconnected;
     const name = s.projectName || "unknown";
-    return '<button class="claude-session-tab ' + (isActive ? 'active' : '') + '" onclick="switchClaudeSession(\'' + sid + '\')">'
-      + escapeHtml(name)
+    const classes = 'claude-session-tab' + (isActive ? ' active' : '') + (isDisconnected ? ' disconnected' : '');
+    const dot = '<span class="tab-status-dot ' + (isDisconnected ? 'disconnected' : 'connected') + '"></span> ';
+    return '<button class="' + classes + '" onclick="switchClaudeSession(\'' + sid + '\')">'
+      + dot + escapeHtml(name)
       + ' <span class="tab-close" onclick="event.stopPropagation(); killClaudeSessionUI(\'' + sid + '\')">&times;</span>'
       + '</button>';
   }).join("");
@@ -2053,20 +2136,28 @@ function reattachClaudeSession(sessionId, projectName) {
         renderClaudeSessionTabs();
         updateSessionsBadge();
       } else if (msg.type === "exit") {
+        entry._exited = true;
         cterm.writeln("\r\n\x1b[33m[Session ended]\x1b[0m");
         setTimeout(() => cleanupClaudeSession(sessionId), 2000);
       }
     } catch {}
   };
-  ws.onclose = () => { cterm.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m"); };
+  ws.onclose = () => {
+    if (!entry._exited) {
+      cterm.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
+      entry.disconnected = true;
+      updateReconnectButton();
+      renderClaudeSessionTabs();
+    }
+  };
   ws.onerror = () => {};
   cterm.onData((data) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", data }));
+    if (entry.ws && entry.ws.readyState === WebSocket.OPEN) entry.ws.send(JSON.stringify({ type: "input", data }));
   });
   // Full clipboard support (copy, paste, image paste) — same as main terminal
-  setupSessionClipboard(cterm, container, () => ws);
+  setupSessionClipboard(cterm, container, () => entry.ws);
   cterm.onResize(({ cols, rows }) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols, rows }));
+    if (entry.ws && entry.ws.readyState === WebSocket.OPEN) entry.ws.send(JSON.stringify({ type: "resize", cols, rows }));
   });
   const ro = new ResizeObserver(() => { try { fitAddon.fit(); } catch {} });
   ro.observe(container);
