@@ -46,7 +46,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 **Source code** (development, not on Pi):
 ```
 SPAWN/
-├── shared/schema.ts     ← Drizzle ORM schema (4 tables)
+├── shared/schema.ts     ← Drizzle ORM schema (5 tables)
 ├── daemon/
 │   ├── index.ts         ← Express app, REST routes, auth, dashboard
 │   ├── storage.ts       ← IStorage + DatabaseStorage (all DB queries)
@@ -82,6 +82,7 @@ PostgreSQL user `scws`, database `scws_daemon`.
 | `claude_runs` | Your execution history (prompt, output, mode, session, duration) |
 | `activity_log` | All actions (created, built, deployed, started, stopped) |
 | `daemon_config` | Key-value daemon settings |
+| `spawn_memories` | Persistent key-value memory for MCP server |
 
 Connection: `postgresql://scws:<password>@localhost:5432/scws_daemon`
 

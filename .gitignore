@@ -1,5 +1,6 @@
 node_modules/
 dist/
+!daemon/dist/
 .env
 *.log
 backups/
