@@ -1,0 +1,30 @@
+#!/bin/bash
+# SPAWN git pre-push hook — logs pushes to the activity dashboard
+# Runs before push completes (no post-push hook in git)
+
+DAEMON_URL="http://127.0.0.1:4000"
+TOKEN="b3089956e81b8b8c11979d66b8e31776178f67d79da18a5670374810433d2ad1"
+
+REMOTE="$1"
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
+
+# Count commits being pushed
+while read LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  if [ "$REMOTE_SHA" = "0000000000000000000000000000000000000000" ]; then
+    COUNT="new branch"
+  else
+    COUNT=$(git rev-list --count "${REMOTE_SHA}..${LOCAL_SHA}" 2>/dev/null || echo "?")
+    COUNT="${COUNT} commit(s)"
+  fi
+
+  DETAILS="[${REPO}] Pushed ${BRANCH} → ${REMOTE} (${COUNT})"
+
+  curl -s -X POST "${DAEMON_URL}/api/activity" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"github_push\",\"details\":$(printf '%s' "$DETAILS" | jq -Rs .)}" \
+    >/dev/null 2>&1 &
+done
+
+exit 0

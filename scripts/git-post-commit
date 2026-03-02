@@ -1,0 +1,23 @@
+#!/bin/bash
+# SPAWN git post-commit hook — logs commits to the activity dashboard
+# Installed in all SPAWN-managed repos
+
+DAEMON_URL="http://127.0.0.1:4000"
+TOKEN="b3089956e81b8b8c11979d66b8e31776178f67d79da18a5670374810433d2ad1"
+
+# Get commit info
+HASH=$(git rev-parse --short HEAD 2>/dev/null)
+MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null)
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
+FILES_CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | wc -l | tr -d ' ')
+
+DETAILS="[${REPO}/${BRANCH}] ${HASH} — ${MSG} (${FILES_CHANGED} files)"
+
+curl -s -X POST "${DAEMON_URL}/api/activity" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"git_commit\",\"details\":$(printf '%s' "$DETAILS" | jq -Rs .)}" \
+  >/dev/null 2>&1 &
+
+exit 0
