@@ -375,7 +375,7 @@ export async function importFromUrl(repoUrl: string): Promise<Project> {
   // npm install — include devDeps (needed for build tools like typescript)
   if (existsSync(`${projectDir}/package.json`)) {
     log(`Installing dependencies for ${name}...`, "project");
-    const installEnv = { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" };
+    const installEnv = { ...process.env, NODE_OPTIONS: "--max-old-space-size=512" };
     delete installEnv.NODE_ENV; // Ensure devDeps are installed (NODE_ENV=production skips them)
     await execFileAsync("npm", ["install"], {
       cwd: projectDir,
@@ -611,7 +611,21 @@ export async function restartProject(name: string): Promise<void> {
 
 // ── Build ─────────────────────────────────────────────────────────
 
+let activeBuild: string | null = null;
+
 export async function buildProject(name: string): Promise<{ output: string }> {
+  if (activeBuild) {
+    throw new Error(`Build already in progress for "${activeBuild}". Only one build at a time.`);
+  }
+  activeBuild = name;
+  try {
+    return await buildProjectInner(name);
+  } finally {
+    activeBuild = null;
+  }
+}
+
+async function buildProjectInner(name: string): Promise<{ output: string }> {
   const project = await storage.getProject(name);
   if (!project) throw new Error(`Project "${name}" not found`);
   if (!project.buildCommand) throw new Error(`Project "${name}" has no build command`);
@@ -623,7 +637,7 @@ export async function buildProject(name: string): Promise<{ output: string }> {
     const { stdout, stderr } = await execFileAsync("bash", ["-c", project.buildCommand], {
       cwd: projectDir,
       timeout: 300_000,
-      env: { ...process.env, NODE_ENV: "production", NODE_OPTIONS: "--max-old-space-size=4096" },
+      env: { ...process.env, NODE_ENV: "production", NODE_OPTIONS: "--max-old-space-size=512" },
     });
 
     await storage.updateProject(name, {

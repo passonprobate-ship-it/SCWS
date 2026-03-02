@@ -12,9 +12,11 @@ export async function pm2Start(
   port: number,
   envVars: Record<string, string> = {},
   startCommand?: string | null,
+  memoryLimitMB: number = 256,
 ): Promise<void> {
   const cwd = `${PROJECTS_DIR}/${projectName}`;
   const pm2Name = `scws-${projectName}`;
+  const restartMB = Math.round(memoryLimitMB * 1.2);
 
   const env = {
     NODE_ENV: "production",
@@ -28,18 +30,17 @@ export async function pm2Start(
     .join(" ");
 
   if (startCommand) {
-    // For frameworks like Next.js that use "npm start" instead of a direct entry file
     await execFileAsync("bash", ["-c",
-      `cd "${cwd}" && env ${envArgs} pm2 start bash --name "${pm2Name}" --cwd "${cwd}" --update-env -- -c "cd '${cwd}' && ${startCommand}"`,
+      `cd "${cwd}" && env ${envArgs} pm2 start bash --name "${pm2Name}" --cwd "${cwd}" --update-env --max-memory-restart ${restartMB}M -- -c "cd '${cwd}' && ${startCommand}"`,
     ], { timeout: 30_000 });
   } else {
     await execFileAsync("bash", ["-c",
-      `cd "${cwd}" && env ${envArgs} pm2 start "${entryFile}" --name "${pm2Name}" --cwd "${cwd}" --update-env`,
+      `cd "${cwd}" && env ${envArgs} pm2 start "${entryFile}" --name "${pm2Name}" --cwd "${cwd}" --update-env --node-args="--max-old-space-size=${memoryLimitMB}" --max-memory-restart ${restartMB}M`,
     ], { timeout: 30_000 });
   }
 
   await execFileAsync("pm2", ["save"], { timeout: 10_000 });
-  log(`PM2 started: ${pm2Name} on port ${port}`, "pm2");
+  log(`PM2 started: ${pm2Name} on port ${port} (heap ${memoryLimitMB}MB)`, "pm2");
 }
 
 export async function pm2Stop(projectName: string): Promise<void> {

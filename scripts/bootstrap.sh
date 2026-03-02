@@ -1,91 +1,321 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# =============================================================================
+# SPAWN Bootstrap — Self-Programming Autonomous Web Node
+# =============================================================================
+# Regenerated: 2026-03-01 from live system audit
+#
+# Sets up a fresh Ubuntu Server 24.04 (arm64) on a Raspberry Pi 5 to match the
+# production SPAWN system. Run as root or with sudo on a fresh install.
+#
+# Prerequisites:
+#   - Ubuntu Server 24.04 LTS (arm64) freshly imaged
+#   - User 'codeman' created during install (uid 1000)
+#   - Internet connectivity
+#   - SSH access
+#
+# Usage:
+#   curl -fsSL <url>/bootstrap.sh | sudo bash
+#   # — or —
+#   sudo bash bootstrap.sh
+#
+# After running:
+#   1. Set up Tailscale:  sudo tailscale up --hostname=SPAWN
+#   2. Authenticate gh:   gh auth login
+#   3. Install Claude CLI: see https://docs.anthropic.com/claude-code
+#   4. Clone/deploy daemon code into /var/www/scws/daemon/
+#   5. Create /var/www/scws/daemon/.env with required keys
+#   6. Build daemon & start PM2
+#   7. Restore DB backups if migrating
+# =============================================================================
 set -euo pipefail
 
-# ═══════════════════════════════════════════════════════════════════
-# SPAWN Bootstrap Script — Raspberry Pi 5 + Tailscale
-# Self-Programming Autonomous Web Node
-# Provisions a fresh Ubuntu Server 24.04 ARM64 Pi into a dev server
-# Run as: sudo bash bootstrap.sh
-# ═══════════════════════════════════════════════════════════════════
+# ── Colors ───────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+log()  { echo -e "${GREEN}[SPAWN]${NC} $*"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+err()  { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
-# ── Configuration (edit these before running) ─────────────────────
-
-SCWS_USER="codeman"              # non-root user who runs the daemon
-DASHBOARD_TOKEN="b3089956e81b8b8c11979d66b8e31776178f67d79da18a5670374810433d2ad1"
-DB_PASSWORD="scws_$(openssl rand -hex 8)"
-MCP_SERVER_URL="https://passoncloud.duckdns.org/mcp"
-MCP_SERVER_TOKEN="2c86de7bd448b5f21614599cae27ceccdca921756ec2f8d1ed3e4c8a8e178ce8"
-DUCKDNS_DOMAIN=""                # e.g. "spawn" — leave empty to skip DuckDNS
-DUCKDNS_TOKEN=""                 # DuckDNS token — leave empty to skip
-
-SCWS_HOME=$(eval echo "~${SCWS_USER}")
-
-if [ "$(id -u)" -ne 0 ]; then
-  echo "ERROR: Run this script as root (sudo bash bootstrap.sh)"
+# ── Preflight ────────────────────────────────────────────────────────────────
+if [[ $EUID -ne 0 ]]; then
+  err "This script must be run as root (or via sudo)."
   exit 1
 fi
 
-echo "═══════════════════════════════════════════════════════"
-echo "  SPAWN Bootstrap — Raspberry Pi 5 Provisioning"
-echo "═══════════════════════════════════════════════════════"
+SPAWN_USER="codeman"
+if ! id "$SPAWN_USER" &>/dev/null; then
+  err "User '$SPAWN_USER' does not exist. Create it first."
+  exit 1
+fi
 
-# ── Step 1: System packages ───────────────────────────────────────
-echo ""
-echo "▸ Step 1/15: Installing system packages..."
+ARCH=$(dpkg --print-architecture)
+if [[ "$ARCH" != "arm64" ]]; then
+  warn "Expected arm64 architecture, got $ARCH. Proceeding anyway."
+fi
 
-apt update && apt upgrade -y
-apt install -y \
-  nginx postgresql postgresql-contrib fail2ban \
-  curl wget git build-essential \
+log "Starting SPAWN bootstrap on $(hostname) — $(date)"
+
+# ── 1. Hostname ──────────────────────────────────────────────────────────────
+log "Setting hostname to SPAWN..."
+hostnamectl set-hostname SPAWN
+
+# ── 2. Sudoers — passwordless sudo for codeman ──────────────────────────────
+log "Configuring sudoers..."
+echo "$SPAWN_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/codeman
+chmod 440 /etc/sudoers.d/codeman
+
+# ── 3. User groups — GPIO, I2C, SPI, Docker, etc. ───────────────────────────
+log "Setting up hardware groups..."
+for grp in gpio spi i2c; do
+  groupadd -f "$grp"
+done
+usermod -aG sudo,adm,dialout,cdrom,audio,video,plugdev,games,users,input,render,netdev,gpio,spi,i2c "$SPAWN_USER"
+
+# ── 4. APT repositories ─────────────────────────────────────────────────────
+log "Adding APT repositories..."
+
+# NodeSource (Node.js 20.x)
+mkdir -p /usr/share/keyrings
+if [[ ! -f /usr/share/keyrings/nodesource.gpg ]]; then
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
+fi
+cat > /etc/apt/sources.list.d/nodesource.sources <<'APTEOF'
+Types: deb
+URIs: https://deb.nodesource.com/node_20.x
+Suites: nodistro
+Components: main
+Architectures: arm64
+Signed-By: /usr/share/keyrings/nodesource.gpg
+APTEOF
+
+# GitHub CLI
+if [[ ! -f /usr/share/keyrings/githubcli-archive-keyring.gpg ]]; then
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+fi
+echo "deb [arch=arm64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  > /etc/apt/sources.list.d/github-cli.list
+
+# Tailscale
+if [[ ! -f /usr/share/keyrings/tailscale-archive-keyring.gpg ]]; then
+  curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+    -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+fi
+echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main" \
+  > /etc/apt/sources.list.d/tailscale.list
+
+# Docker
+mkdir -p /etc/apt/keyrings
+if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+fi
+echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+  > /etc/apt/sources.list.d/docker.list
+
+# ── 5. System packages ──────────────────────────────────────────────────────
+log "Updating and installing system packages..."
+apt-get update -qq
+
+apt-get install -y -qq \
+  nodejs \
+  postgresql postgresql-contrib \
+  redis-server \
+  nginx \
+  tailscale \
+  gh \
+  git \
+  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
+  build-essential \
   python3 python3-pip python3-venv \
-  jq htop tmux unzip \
-  software-properties-common \
-  ffmpeg imagemagick \
+  golang-go \
+  cmake \
+  imagemagick \
+  ffmpeg \
+  jq yq \
   ripgrep \
-  chromium-browser
+  i2c-tools \
+  libgpiod-dev gpiod \
+  libcap2-bin \
+  fail2ban \
+  ufw \
+  sqlite3 \
+  curl wget \
+  unzip \
+  htop \
+  tree
 
-echo "  ✓ System packages installed"
-
-# ── Step 2: Tailscale ────────────────────────────────────────────
-echo ""
-echo "▸ Step 2/15: Installing Tailscale..."
-
-if ! command -v tailscale &>/dev/null; then
-  curl -fsSL https://tailscale.com/install.sh | sh
+# ── 6. Chromium via snap ────────────────────────────────────────────────────
+log "Installing Chromium browser via snap..."
+if ! snap list chromium &>/dev/null; then
+  snap install chromium
 fi
 
-# Check if already connected
-if ! tailscale status &>/dev/null; then
-  echo "  Starting Tailscale..."
-  tailscale up
+# ── 7. Node.js global packages ──────────────────────────────────────────────
+log "Installing global npm packages..."
+npm install -g \
+  pm2@latest \
+  typescript \
+  tsx \
+  esbuild \
+  puppeteer-core
+
+# ── 8. PM2 log rotation ─────────────────────────────────────────────────────
+log "Installing and configuring pm2-logrotate..."
+sudo -u "$SPAWN_USER" pm2 install pm2-logrotate
+sudo -u "$SPAWN_USER" pm2 set pm2-logrotate:max_size 10M
+sudo -u "$SPAWN_USER" pm2 set pm2-logrotate:retain 5
+sudo -u "$SPAWN_USER" pm2 set pm2-logrotate:compress true
+sudo -u "$SPAWN_USER" pm2 set pm2-logrotate:dateFormat YYYY-MM-DD_HH-mm-ss
+sudo -u "$SPAWN_USER" pm2 set pm2-logrotate:rotateInterval "0 0 * * *"
+sudo -u "$SPAWN_USER" pm2 set pm2-logrotate:rotateModule true
+
+# ── 9. PM2 startup hook ─────────────────────────────────────────────────────
+log "Configuring PM2 startup..."
+env PATH=$PATH:/usr/bin pm2 startup systemd -u "$SPAWN_USER" --hp "/home/$SPAWN_USER" --no-daemon
+systemctl enable pm2-codeman
+
+# ── 10. Bun ──────────────────────────────────────────────────────────────────
+log "Installing Bun..."
+sudo -u "$SPAWN_USER" bash -c 'curl -fsSL https://bun.sh/install | bash'
+
+# ── 11. Docker group ────────────────────────────────────────────────────────
+log "Adding $SPAWN_USER to docker group..."
+usermod -aG docker "$SPAWN_USER"
+
+# ── 12. PostgreSQL setup ────────────────────────────────────────────────────
+log "Configuring PostgreSQL..."
+systemctl enable --now postgresql
+
+# Create the scws role (prompt for password)
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='scws'" | grep -q 1; then
+  log "Creating PostgreSQL role 'scws'..."
+  echo "Enter password for PostgreSQL role 'scws':"
+  read -rs SCWS_DB_PASSWORD
+  sudo -u postgres psql -c "CREATE ROLE scws WITH LOGIN PASSWORD '$SCWS_DB_PASSWORD';"
+else
+  log "PostgreSQL role 'scws' already exists."
 fi
 
-TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
-TAILSCALE_HOSTNAME=$(tailscale status --self --json 2>/dev/null | jq -r '.Self.DNSName // "unknown"' | sed 's/\.$//')
+# Create databases
+for db in scws_daemon spawn_cortex solbot_db; do
+  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
+    sudo -u postgres psql -c "CREATE DATABASE $db OWNER scws;"
+    log "Created database: $db"
+  else
+    log "Database $db already exists."
+  fi
+done
 
-echo "  ✓ Tailscale connected"
-echo "  Tailscale IP: ${TAILSCALE_IP}"
-echo "  Hostname:     ${TAILSCALE_HOSTNAME}"
+# ── 13. Directory structure ──────────────────────────────────────────────────
+log "Creating SPAWN directory structure..."
+mkdir -p /var/www/scws/{daemon,projects,nginx/projects,scripts,logs,backups}
+chown -R "$SPAWN_USER:$SPAWN_USER" /var/www/scws
 
-# ── Step 3: Firewall (Tailscale-friendly) ─────────────────────────
-echo ""
-echo "▸ Step 3/15: Configuring firewall..."
+# ── 14. Swap (4GB) ──────────────────────────────────────────────────────────
+log "Configuring 4GB swap..."
+if [[ ! -f /swapfile ]]; then
+  fallocate -l 4G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  log "4GB swapfile created and activated."
+else
+  log "Swapfile already exists."
+fi
 
-# Allow Tailscale interface, block public access
+# ── 15. Kernel tuning ───────────────────────────────────────────────────────
+log "Applying kernel tuning..."
+cat > /etc/sysctl.d/99-spawn-memory.conf <<'SYSEOF'
+vm.swappiness=5
+vm.vfs_cache_pressure=50
+SYSEOF
+sysctl --system >/dev/null 2>&1
+
+# ── 16. GPIO / I2C / SPI / PWM hardware config ──────────────────────────────
+log "Configuring Pi 5 hardware interfaces..."
+
+# udev rule for GPIO group access
+cat > /etc/udev/rules.d/99-gpio.rules <<'UDEVEOF'
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"
+UDEVEOF
+udevadm control --reload-rules
+udevadm trigger
+
+# Boot firmware — enable I2C, SPI, UART, PWM
+BOOT_CONFIG="/boot/firmware/config.txt"
+if [[ -f "$BOOT_CONFIG" ]]; then
+  # Ensure I2C is enabled
+  if ! grep -q '^dtparam=i2c_arm=on' "$BOOT_CONFIG"; then
+    sed -i '/^\[all\]/a dtparam=i2c_arm=on' "$BOOT_CONFIG"
+  fi
+  # Ensure SPI is enabled
+  if ! grep -q '^dtparam=spi=on' "$BOOT_CONFIG"; then
+    sed -i '/^\[all\]/a dtparam=spi=on' "$BOOT_CONFIG"
+  fi
+  # Ensure UART is enabled
+  if ! grep -q '^enable_uart=1' "$BOOT_CONFIG"; then
+    sed -i '/^\[all\]/a enable_uart=1' "$BOOT_CONFIG"
+  fi
+  # Ensure PWM overlay (2-channel on GPIO 12/13)
+  if ! grep -q 'dtoverlay=pwm-2chan' "$BOOT_CONFIG"; then
+    echo 'dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4' >> "$BOOT_CONFIG"
+  fi
+  log "Boot config updated. Reboot required for hardware changes."
+else
+  warn "Boot config not found at $BOOT_CONFIG — skipping hardware overlay setup."
+fi
+
+# ── 17. Nginx configuration ─────────────────────────────────────────────────
+log "Configuring nginx..."
+
+# Remove default site
+rm -f /etc/nginx/sites-enabled/default
+
+# Main SPAWN server block
+cat > /etc/nginx/sites-available/scws <<'NGINXEOF'
+server {
+    listen 80;
+    server_name 100.89.2.95 spawn.tail852587.ts.net 192.168.1.125 _;
+
+    client_max_body_size 150m;
+
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+
+    include /var/www/scws/nginx/projects/*.conf;
+}
+NGINXEOF
+
+ln -sf /etc/nginx/sites-available/scws /etc/nginx/sites-enabled/scws
+nginx -t && systemctl reload nginx
+systemctl enable nginx
+
+# ── 18. UFW firewall ─────────────────────────────────────────────────────────
+log "Configuring firewall..."
+ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow in on tailscale0
-ufw allow 22/tcp   # SSH (local network for initial setup)
-ufw allow 80/tcp   # HTTP (nginx → dashboard + projects)
+ufw allow 22/tcp              # SSH
+ufw allow 80/tcp              # HTTP (nginx)
+ufw allow in on tailscale0    # All Tailscale traffic
 ufw --force enable
+systemctl enable ufw
 
-echo "  ✓ Firewall configured (Tailscale + SSH + HTTP)"
-
-# ── Step 4: fail2ban ──────────────────────────────────────────────
-echo ""
-echo "▸ Step 4/15: Configuring fail2ban..."
-
-cat > /etc/fail2ban/jail.local << 'JAIL'
+# ── 19. Fail2ban ─────────────────────────────────────────────────────────────
+log "Configuring fail2ban..."
+cat > /etc/fail2ban/jail.local <<'F2BEOF'
 [DEFAULT]
 bantime = 1800
 findtime = 600
@@ -95,374 +325,284 @@ maxretry = 5
 enabled = true
 port = ssh
 logpath = %(sshd_log)s
-JAIL
-
+F2BEOF
 systemctl enable fail2ban
-systemctl restart fail2ban
+systemctl restart fail2ban || warn "fail2ban failed to start — check logs."
 
-echo "  ✓ fail2ban configured"
+# ── 20. Backup script + cron ────────────────────────────────────────────────
+log "Installing backup scripts and cron jobs..."
 
-# ── Step 5: Node.js 20 ───────────────────────────────────────────
-echo ""
-echo "▸ Step 5/15: Installing Node.js 20..."
-
-if ! command -v node &>/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt install -y nodejs
-fi
-
-echo "  Node.js $(node --version)"
-echo "  npm $(npm --version)"
-echo "  ✓ Node.js installed"
-
-# ── Step 6: Global npm tools ─────────────────────────────────────
-echo ""
-echo "▸ Step 6/15: Installing global npm tools..."
-
-npm install -g pm2 typescript tsx esbuild
-
-echo "  ✓ PM2, TypeScript, tsx, esbuild installed globally"
-
-# ── Step 7: Claude CLI ───────────────────────────────────────────
-echo ""
-echo "▸ Step 7/15: Installing Claude CLI..."
-
-if ! su - "${SCWS_USER}" -c "command -v claude" &>/dev/null; then
-  su - "${SCWS_USER}" -c "curl -fsSL https://claude.ai/install.sh | bash"
-fi
-
-# Claude CLI settings
-su - "${SCWS_USER}" -c "mkdir -p ${SCWS_HOME}/.claude"
-cat > "${SCWS_HOME}/.claude/settings.json" << EOF
-{
-  "mcpServers": {
-    "claude-persistent": {
-      "type": "streamableHttp",
-      "url": "${MCP_SERVER_URL}",
-      "headers": {
-        "Authorization": "Bearer ${MCP_SERVER_TOKEN}"
-      }
-    }
-  },
-  "permissions": {
-    "allow": ["Bash", "Read", "Edit", "Write", "Glob", "Grep"]
-  }
-}
-EOF
-chown "${SCWS_USER}:${SCWS_USER}" "${SCWS_HOME}/.claude/settings.json"
-
-echo "  ✓ Claude CLI installed for ${SCWS_USER}"
-echo "  NOTE: Run 'claude' interactively to authenticate with Claude Max"
-
-# ── Step 8: GitHub CLI ───────────────────────────────────────────
-echo ""
-echo "▸ Step 8/15: Installing GitHub CLI..."
-
-if ! command -v gh &>/dev/null; then
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
-    dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
-    tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  apt update && apt install -y gh
-fi
-
-echo "  ✓ GitHub CLI installed"
-echo "  NOTE: Run 'gh auth login' as ${SCWS_USER} after bootstrap"
-
-# ── Step 9: Docker CE + Redis ────────────────────────────────────
-echo ""
-echo "▸ Step 9/15: Installing Docker CE + Redis..."
-
-# Docker CE
-if ! command -v docker &>/dev/null; then
-  curl -fsSL https://get.docker.com | sh
-  usermod -aG docker "${SCWS_USER}"
-fi
-systemctl enable docker
-
-# Redis
-if ! command -v redis-server &>/dev/null; then
-  apt install -y redis-server
-fi
-systemctl enable redis-server
-systemctl start redis-server
-
-echo "  ✓ Docker CE installed (user ${SCWS_USER} added to docker group)"
-echo "  ✓ Redis installed and running"
-
-# ── Step 10: Go + GPIO libraries ─────────────────────────────────
-echo ""
-echo "▸ Step 10/15: Installing Go + GPIO libraries..."
-
-# Go (latest stable via snap or manual — use apt for simplicity)
-if ! command -v go &>/dev/null; then
-  apt install -y golang-go
-fi
-
-# GPIO libraries for Raspberry Pi hardware access
-apt install -y \
-  libgpiod-dev gpiod \
-  python3-gpiod python3-lgpio python3-rpi.gpio \
-  i2c-tools python3-smbus \
-  2>/dev/null || true  # Some packages may not exist on all Ubuntu versions
-
-echo "  Go $(go version 2>/dev/null | awk '{print $3}' || echo 'installed')"
-echo "  ✓ Go + GPIO libraries installed"
-
-# ── Step 11: PostgreSQL ──────────────────────────────────────────
-echo ""
-echo "▸ Step 11/15: Configuring PostgreSQL..."
-
-systemctl enable postgresql
-systemctl start postgresql
-
-sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='scws'" | grep -q 1 || \
-  sudo -u postgres psql -c "CREATE USER scws WITH PASSWORD '${DB_PASSWORD}';"
-
-sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='scws_daemon'" | grep -q 1 || \
-  sudo -u postgres psql -c "CREATE DATABASE scws_daemon OWNER scws;"
-
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE scws_daemon TO scws;"
-
-# Create all 6 tables matching Drizzle schema (shared/schema.ts)
-sudo -u postgres psql scws_daemon << 'SQL'
-CREATE TABLE IF NOT EXISTS projects (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name TEXT NOT NULL UNIQUE,
-  display_name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  port INTEGER NOT NULL UNIQUE,
-  status TEXT NOT NULL DEFAULT 'stopped',
-  framework TEXT NOT NULL DEFAULT 'express',
-  git_repo TEXT,
-  git_branch TEXT NOT NULL DEFAULT 'main',
-  db_name TEXT,
-  entry_file TEXT NOT NULL DEFAULT 'dist/index.js',
-  build_command TEXT,
-  start_command TEXT,
-  env_vars TEXT NOT NULL DEFAULT '{}',
-  deploy_targets TEXT NOT NULL DEFAULT '[]',
-  last_build_at TIMESTAMP,
-  last_deploy_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS claude_runs (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  project_id VARCHAR NOT NULL,
-  project_name TEXT,
-  prompt TEXT NOT NULL,
-  output TEXT,
-  status TEXT NOT NULL DEFAULT 'running',
-  mode TEXT NOT NULL DEFAULT 'build',
-  session_id TEXT,
-  turn_number INTEGER NOT NULL DEFAULT 1,
-  parent_run_id VARCHAR,
-  duration INTEGER,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS activity_log (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  project_id VARCHAR,
-  action TEXT NOT NULL,
-  details TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS daemon_config (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  key TEXT NOT NULL UNIQUE,
-  value TEXT NOT NULL,
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS channels (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  type TEXT NOT NULL,
-  name TEXT NOT NULL,
-  config TEXT NOT NULL DEFAULT '{}',
-  enabled INTEGER NOT NULL DEFAULT 1,
-  verified INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'pending',
-  status_message TEXT,
-  last_tested_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS notifications (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  channel_id VARCHAR NOT NULL,
-  event TEXT NOT NULL,
-  message TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'sent',
-  error TEXT,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_notifications_channel ON notifications(channel_id);
-
-GRANT ALL ON ALL TABLES IN SCHEMA public TO scws;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO scws;
-SQL
-
-echo "  ✓ PostgreSQL configured (user: scws, db: scws_daemon, 6 tables created)"
-echo "  DB Password: ${DB_PASSWORD}"
-
-# ── Step 12: Directory structure + .env ──────────────────────────
-echo ""
-echo "▸ Step 12/15: Creating directory structure..."
-
-mkdir -p /var/www/scws/{daemon/dist,projects,nginx/projects,scripts,logs}
-
-# Set ownership to SCWS_USER (daemon runs as non-root)
-chown -R "${SCWS_USER}:${SCWS_USER}" /var/www/scws
-
-# Daemon .env
-cat > /var/www/scws/daemon/.env << EOF
-DATABASE_URL=postgresql://scws:${DB_PASSWORD}@localhost:5432/scws_daemon
-PORT=4000
-DASHBOARD_TOKEN=${DASHBOARD_TOKEN}
-SCWS_DB_PASSWORD=${DB_PASSWORD}
-SCWS_BASE_URL=http://${TAILSCALE_IP}
-NODE_ENV=production
-EOF
-
-chmod 600 /var/www/scws/daemon/.env
-chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/daemon/.env
-
-echo "  ✓ Directory structure created"
-
-# ── Step 13: nginx (HTTP only, Tailscale) ─────────────────────────
-echo ""
-echo "▸ Step 13/15: Configuring nginx..."
-
-cat > /etc/nginx/sites-available/scws << NGINX
-server {
-    listen 80;
-    server_name ${TAILSCALE_IP} ${TAILSCALE_HOSTNAME};
-
-    # SCWS dashboard at root
-    location / {
-        proxy_pass http://127.0.0.1:4000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
-    }
-
-    # Per-project configs
-    include /var/www/scws/nginx/projects/*.conf;
-}
-NGINX
-
-ln -sf /etc/nginx/sites-available/scws /etc/nginx/sites-enabled/scws
-rm -f /etc/nginx/sites-enabled/default
-
-nginx -t && systemctl reload nginx
-
-echo "  ✓ nginx configured (HTTP only, Tailscale access)"
-
-# ── Step 14: Sudoers + PM2 ──────────────────────────────────────
-echo ""
-echo "▸ Step 14/15: Configuring sudoers + PM2..."
-
-cat > /etc/sudoers.d/scws << EOF
-# SPAWN — full passwordless sudo for dev Pi (Tailscale-only access)
-${SCWS_USER} ALL=(ALL) NOPASSWD: ALL
-EOF
-
-chmod 440 /etc/sudoers.d/scws
-
-echo "  ✓ Sudoers configured for ${SCWS_USER}"
-
-su - "${SCWS_USER}" -c "pm2 startup systemd -u ${SCWS_USER} --hp ${SCWS_HOME}" 2>/dev/null || true
-# The above prints a command to run as root — capture and execute it
-PM2_STARTUP_CMD=$(su - "${SCWS_USER}" -c "pm2 startup systemd -u ${SCWS_USER} --hp ${SCWS_HOME}" 2>&1 | grep "sudo env" || true)
-if [ -n "$PM2_STARTUP_CMD" ]; then
-  eval "$PM2_STARTUP_CMD" 2>/dev/null || true
-fi
-
-echo "  ✓ PM2 configured for startup as ${SCWS_USER}"
-
-# ── Step 15: Cron jobs (healthcheck + DuckDNS) ──────────────────
-echo ""
-echo "▸ Step 15/15: Setting up cron jobs..."
-
-# Copy healthcheck script
-cp "$(dirname "$0")/healthcheck.sh" /var/www/scws/scripts/healthcheck.sh 2>/dev/null || true
-chmod +x /var/www/scws/scripts/healthcheck.sh 2>/dev/null || true
-chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/scripts/healthcheck.sh 2>/dev/null || true
-
-# Healthcheck cron — every 5 minutes
-HEALTH_CRON="*/5 * * * * /var/www/scws/scripts/healthcheck.sh"
-(su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true) | grep -qF "healthcheck.sh" || \
-  (su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true; echo "${HEALTH_CRON}") | su - "${SCWS_USER}" -c "crontab -"
-
-echo "  ✓ Healthcheck cron installed (every 5 minutes)"
-
-# DuckDNS dynamic DNS (optional)
-if [ -n "${DUCKDNS_DOMAIN}" ] && [ -n "${DUCKDNS_TOKEN}" ]; then
-  cat > /var/www/scws/scripts/duckdns-update.sh << DUCKDNS
+# --- Local backup script (12 backup types) ---
+cat > /var/www/scws/scripts/backup-db.sh <<'BACKUPEOF'
 #!/bin/bash
-echo url="https://www.duckdns.org/update?domains=${DUCKDNS_DOMAIN}&token=${DUCKDNS_TOKEN}&ip=" | curl -k -o /var/www/scws/logs/duckdns.log -K -
-DUCKDNS
-  chmod +x /var/www/scws/scripts/duckdns-update.sh
-  chown "${SCWS_USER}:${SCWS_USER}" /var/www/scws/scripts/duckdns-update.sh
+# SPAWN backup script
+# Runs nightly via cron, retains 7 days of backups
+# Covers: all PostgreSQL databases + project source code + nginx configs + daemon config
+# + daemon full + SPAWN core + system nginx + Claude memory + crontab + PM2 state
 
-  DUCKDNS_CRON="*/5 * * * * /var/www/scws/scripts/duckdns-update.sh"
-  (su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true) | grep -qF "duckdns-update.sh" || \
-    (su - "${SCWS_USER}" -c "crontab -l 2>/dev/null" || true; echo "${DUCKDNS_CRON}") | su - "${SCWS_USER}" -c "crontab -"
+export PATH="/usr/bin:/usr/local/bin:$PATH"
+export HOME="/home/codeman"
 
-  echo "  ✓ DuckDNS cron installed (domain: ${DUCKDNS_DOMAIN})"
+BACKUP_DIR="/var/www/scws/backups"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RETENTION_DAYS=7
+
+mkdir -p "${BACKUP_DIR}"
+
+# --- PostgreSQL Databases ---
+pg_dump -U scws -h localhost scws_daemon | gzip > "${BACKUP_DIR}/scws_daemon_${TIMESTAMP}.sql.gz"
+if [ $? -eq 0 ]; then
+    echo "[$(date)] Backup successful: scws_daemon_${TIMESTAMP}.sql.gz"
 else
-  echo "  ⊘ DuckDNS skipped (DUCKDNS_DOMAIN/DUCKDNS_TOKEN not set)"
+    echo "[$(date)] ERROR: Backup failed for scws_daemon" >&2
 fi
 
-# ═══════════════════════════════════════════════════════════════════
+for db in $(psql -U scws -h localhost -d postgres -t -A -c "SELECT datname FROM pg_database WHERE datdba = (SELECT oid FROM pg_roles WHERE rolname = 'scws') AND datname NOT IN ('scws_daemon', 'postgres', 'template0', 'template1');"); do
+    pg_dump -U scws -h localhost "$db" | gzip > "${BACKUP_DIR}/${db}_${TIMESTAMP}.sql.gz"
+    if [ $? -eq 0 ]; then
+        echo "[$(date)] Backup successful: ${db}_${TIMESTAMP}.sql.gz"
+    else
+        echo "[$(date)] WARNING: Backup failed for ${db}" >&2
+    fi
+done
+
+# --- Project Source Code ---
+tar czf "${BACKUP_DIR}/projects_${TIMESTAMP}.tar.gz" \
+    --exclude='node_modules' --exclude='dist' --exclude='.git' --exclude='*.log' \
+    -C /var/www/scws projects/ 2>/dev/null
+echo "[$(date)] Backup: projects_${TIMESTAMP}.tar.gz ($?)"
+
+# --- Nginx Configs ---
+tar czf "${BACKUP_DIR}/nginx_configs_${TIMESTAMP}.tar.gz" \
+    -C /var/www/scws nginx/ 2>/dev/null
+echo "[$(date)] Backup: nginx_configs_${TIMESTAMP}.tar.gz ($?)"
+
+# --- Daemon Config (.env + ecosystem) ---
+tar czf "${BACKUP_DIR}/daemon_config_${TIMESTAMP}.tar.gz" \
+    --exclude='node_modules' --exclude='dist' \
+    -C /var/www/scws daemon/.env daemon/ecosystem.config.cjs 2>/dev/null
+echo "[$(date)] Backup: daemon_config_${TIMESTAMP}.tar.gz ($?)"
+
+# --- Daemon Full (web interface + API, includes dist/) ---
+tar czf "${BACKUP_DIR}/daemon_full_${TIMESTAMP}.tar.gz" \
+    --exclude='node_modules' --exclude='*.bak' \
+    -C /var/www/scws daemon/ 2>/dev/null
+echo "[$(date)] Backup: daemon_full_${TIMESTAMP}.tar.gz ($?)"
+
+# --- SPAWN Core (CLAUDE.md + scripts) ---
+tar czf "${BACKUP_DIR}/spawn_core_${TIMESTAMP}.tar.gz" \
+    -C /var/www/scws CLAUDE.md scripts/ 2>/dev/null
+echo "[$(date)] Backup: spawn_core_${TIMESTAMP}.tar.gz ($?)"
+
+# --- System nginx (main site config) ---
+sudo tar czf "${BACKUP_DIR}/nginx_system_${TIMESTAMP}.tar.gz" \
+    -C /etc nginx/sites-enabled/ nginx/nginx.conf 2>/dev/null
+echo "[$(date)] Backup: nginx_system_${TIMESTAMP}.tar.gz ($?)"
+
+# --- Claude Memory ---
+tar czf "${BACKUP_DIR}/claude_memory_${TIMESTAMP}.tar.gz" \
+    -C /home/codeman .claude/projects/-var-www-scws/memory/ 2>/dev/null
+echo "[$(date)] Backup: claude_memory_${TIMESTAMP}.tar.gz ($?)"
+
+# --- Crontab ---
+crontab -l > "${BACKUP_DIR}/crontab_${TIMESTAMP}.txt" 2>/dev/null
+echo "[$(date)] Backup: crontab_${TIMESTAMP}.txt"
+
+# --- PM2 Process List ---
+pm2 jlist > "${BACKUP_DIR}/pm2_processes_${TIMESTAMP}.json" 2>/dev/null
+echo "[$(date)] Backup: pm2_processes_${TIMESTAMP}.json"
+
+# --- Prune ---
+find "${BACKUP_DIR}" \( -name "*.sql.gz" -o -name "*.tar.gz" -o -name "*.json" -o -name "*.txt" \) -mtime +${RETENTION_DAYS} -delete
+echo "[$(date)] Pruned backups older than ${RETENTION_DAYS} days"
+BACKUPEOF
+chmod +x /var/www/scws/scripts/backup-db.sh
+
+# --- Off-site backup script ---
+# Note: backup-offsite.sh should be copied from the repo or restored from backup.
+# It pushes local backups to MCP server at passoncloud.duckdns.org.
+# The token must be configured manually after bootstrap.
+touch /var/www/scws/scripts/backup-offsite.sh
+chmod +x /var/www/scws/scripts/backup-offsite.sh
+
+# Install cron jobs for codeman
+CRON_LOCAL="0 2 * * * /var/www/scws/scripts/backup-db.sh >> /var/www/scws/logs/backup.log 2>&1"
+CRON_OFFSITE="15 2 * * * /var/www/scws/scripts/backup-offsite.sh >> /var/www/scws/logs/backup-offsite.log 2>&1"
+(sudo -u "$SPAWN_USER" crontab -l 2>/dev/null | grep -v 'backup-db.sh' | grep -v 'backup-offsite.sh'; echo "$CRON_LOCAL"; echo "$CRON_OFFSITE") \
+  | sudo -u "$SPAWN_USER" crontab -
+
+# ── 21. Python GPIO library ─────────────────────────────────────────────────
+log "Installing Python GPIO libraries..."
+pip3 install gpiod rpi-lgpio --break-system-packages 2>/dev/null || \
+pip3 install gpiod rpi-lgpio
+
+# ── 22. pinctrl (built from source) ─────────────────────────────────────────
+log "Building pinctrl from source..."
+if [[ ! -f /usr/local/bin/pinctrl ]]; then
+  TMPDIR=$(mktemp -d)
+  git clone --depth=1 https://github.com/raspberrypi/utils.git "$TMPDIR/rpi-utils"
+  cd "$TMPDIR/rpi-utils"
+  cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local
+  cmake --build build --target pinctrl
+  cp build/pinctrl/pinctrl /usr/local/bin/pinctrl
+  chmod +x /usr/local/bin/pinctrl
+  cd /
+  rm -rf "$TMPDIR"
+  log "pinctrl installed to /usr/local/bin/pinctrl"
+else
+  log "pinctrl already installed."
+fi
+
+# ── 23. Shell profile — Bun + Claude CLI paths ──────────────────────────────
+log "Configuring shell profile..."
+PROFILE="/home/$SPAWN_USER/.profile"
+BASHRC="/home/$SPAWN_USER/.bashrc"
+
+# .profile — ensure ~/.local/bin and bun are in PATH
+if ! grep -q 'BUN_INSTALL' "$PROFILE" 2>/dev/null; then
+  cat >> "$PROFILE" <<'PROFILEEOF'
+
+# Bun
+export PATH="/home/codeman/.bun/bin:$PATH"
+PROFILEEOF
+fi
+
+if ! grep -q '.local/bin' "$PROFILE" 2>/dev/null; then
+  # Already in default Ubuntu .profile template usually, but ensure
+  :
+fi
+
+# .bashrc — Bun export
+if ! grep -q 'BUN_INSTALL' "$BASHRC" 2>/dev/null; then
+  cat >> "$BASHRC" <<'BASHRCEOF'
+
+# Bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+BASHRCEOF
+fi
+
+chown "$SPAWN_USER:$SPAWN_USER" "$PROFILE" "$BASHRC"
+
+# ── 24. File ownership sweep ────────────────────────────────────────────────
+log "Final ownership sweep..."
+chown -R "$SPAWN_USER:$SPAWN_USER" /var/www/scws
+
+# ── 25. Ecosystem config ────────────────────────────────────────────────────
+log "Writing PM2 ecosystem config..."
+cat > /var/www/scws/daemon/ecosystem.config.cjs <<'ECOEOF'
+const { readFileSync } = require('fs');
+const envFile = readFileSync('/var/www/scws/daemon/.env', 'utf-8');
+const env = {};
+for (const line of envFile.split('\n')) {
+  const m = line.match(/^([^#=]+)=(.*)$/);
+  if (m) env[m[1].trim()] = m[2].trim();
+}
+module.exports = {
+  apps: [{
+    name: 'scws-daemon',
+    script: 'dist/index.cjs',
+    cwd: '/var/www/scws/daemon',
+    node_args: '--dns-result-order=ipv4first --max-old-space-size=192',
+    max_memory_restart: '200M',
+    env
+  }]
+};
+ECOEOF
+chown "$SPAWN_USER:$SPAWN_USER" /var/www/scws/daemon/ecosystem.config.cjs
+
+# ── 26. OOM killer prioritization ─────────────────────────────────────────
+log "Configuring OOM killer priorities..."
+
+# PM2 god daemon protection
+mkdir -p /etc/systemd/system/pm2-codeman.service.d
+cat > /etc/systemd/system/pm2-codeman.service.d/oom.conf <<'OOMEOF'
+[Service]
+OOMScoreAdjust=-800
+OOMEOF
+systemctl daemon-reload
+
+# Per-process OOM score script (called by daemon on startup + project start/stop)
+cat > /var/www/scws/scripts/set-oom-scores.sh <<'OOMSCRIPT'
+#!/bin/bash
+set -euo pipefail
+log() { echo "[OOM] $*"; }
+set_oom() {
+  local name="$1" score="$2"
+  local pid
+  pid=$(pm2 pid "$name" 2>/dev/null || true)
+  if [[ -n "$pid" && "$pid" != "0" && -d "/proc/$pid" ]]; then
+    printf '%d' "$score" | sudo tee "/proc/$pid/oom_score_adj" > /dev/null 2>&1 && \
+      log "$name (pid $pid) → oom_score_adj=$score" || \
+      log "$name (pid $pid) → failed to set (may need root)"
+  fi
+}
+set_oom "scws-daemon" -500
+set_oom "spawn-mcp" -300
+for proj in $(pm2 jlist 2>/dev/null | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for p in data:
+        name = p.get('name', '')
+        status = p.get('pm2_env', {}).get('status', '')
+        if name not in ('scws-daemon', 'spawn-mcp', 'pm2-logrotate') and status == 'online':
+            print(name)
+except: pass
+" 2>/dev/null); do
+  set_oom "$proj" 300
+done
+log "OOM scores applied."
+OOMSCRIPT
+chmod +x /var/www/scws/scripts/set-oom-scores.sh
+chown "$SPAWN_USER:$SPAWN_USER" /var/www/scws/scripts/set-oom-scores.sh
+
+# ── 27. Disable Docker at boot (start on demand) ──────────────────────────
+log "Disabling Docker at boot (saves ~128MB idle RAM)..."
+systemctl disable docker.service docker.socket containerd.service 2>/dev/null || true
+systemctl stop docker.service containerd.service 2>/dev/null || true
+
+# ── 28. Reduce PostgreSQL max_connections ──────────────────────────────────
+log "Tuning PostgreSQL max_connections..."
+PG_CONF="/etc/postgresql/16/main/postgresql.conf"
+if [[ -f "$PG_CONF" ]]; then
+  sed -i 's/^max_connections = 100/max_connections = 30/' "$PG_CONF"
+  systemctl restart postgresql
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────────────
 echo ""
-echo "═══════════════════════════════════════════════════════"
-echo "  SPAWN Bootstrap Complete! (Raspberry Pi 5)"
-echo "═══════════════════════════════════════════════════════"
+log "============================================"
+log "  SPAWN bootstrap complete!"
+log "============================================"
 echo ""
-echo "  Tailscale IP:  ${TAILSCALE_IP}"
-echo "  Hostname:      ${TAILSCALE_HOSTNAME}"
-echo "  Dashboard:     http://${TAILSCALE_IP}"
-echo "  DB User:       scws"
-echo "  DB Pass:       ${DB_PASSWORD}"
-echo "  Token:         ${DASHBOARD_TOKEN}"
-echo "  Run-as user:   ${SCWS_USER}"
+log "Installed:"
+log "  Node.js $(node --version), npm $(npm --version)"
+log "  PostgreSQL $(psql --version | awk '{print $3}')"
+log "  Redis $(redis-server --version | awk '{print $3}' | tr -d 'v=')"
+log "  nginx $(nginx -v 2>&1 | awk -F/ '{print $2}')"
+log "  Docker $(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',')"
+log "  PM2 $(pm2 --version 2>/dev/null)"
+log "  Tailscale $(tailscale version 2>/dev/null | head -1)"
 echo ""
-echo "  Installed:"
-echo "    nginx, PostgreSQL 16, fail2ban, Tailscale"
-echo "    Node.js 20, PM2, TypeScript, tsx, esbuild"
-echo "    Claude CLI, GitHub CLI"
-echo "    Docker CE, Redis, Go"
-echo "    ffmpeg, ImageMagick, ripgrep, chromium"
-echo "    GPIO libs (libgpiod, i2c-tools)"
+log "Next steps:"
+log "  1. sudo tailscale up --hostname=SPAWN"
+log "  2. gh auth login"
+log "  3. Install Claude CLI:  npm install -g @anthropic-ai/claude-code"
+log "     — or —  curl -fsSL https://claude.ai/install.sh | sh"
+log "  4. Clone daemon source into /var/www/scws/daemon/"
+log "  5. Create /var/www/scws/daemon/.env with:"
+log "       DATABASE_URL=postgresql://scws:<password>@localhost:5432/scws_daemon"
+log "       PORT=4000"
+log "       DASHBOARD_TOKEN=<generate-a-token>"
+log "       SCWS_DB_PASSWORD=<the-password>"
+log "       SCWS_BASE_URL=http://spawn.tail852587.ts.net"
+log "       NODE_ENV=production"
+log "  6. cd /var/www/scws/daemon && npm install && npm run build"
+log "  7. sudo -u codeman pm2 start ecosystem.config.cjs"
+log "  8. sudo -u codeman pm2 save"
+log "  9. Restore DB: gunzip -c backup.sql.gz | psql -U scws -h localhost scws_daemon"
+log "  10. Reboot to activate hardware overlays (I2C, SPI, PWM)"
 echo ""
-echo "  Database: 6 tables (projects, claude_runs, activity_log,"
-echo "    daemon_config, channels, notifications)"
-echo ""
-echo "  Cron: healthcheck (5min)$([ -n "${DUCKDNS_DOMAIN}" ] && echo ", DuckDNS (5min)")"
-echo ""
-echo "  Next steps:"
-echo "  1. Build on Windows:   npx tsx script/build.ts"
-echo "  2. Deploy daemon:      scp dist/* ${SCWS_USER}@${TAILSCALE_IP}:/var/www/scws/daemon/dist/"
-echo "  3. Copy package.json:  scp package.json ${SCWS_USER}@${TAILSCALE_IP}:/var/www/scws/daemon/"
-echo "  4. Install on Pi:      cd /var/www/scws/daemon && npm install --omit=dev"
-echo "  5. Start daemon:       pm2 start dist/index.cjs --name scws-daemon"
-echo "  6. Save PM2:           pm2 save"
-echo "  7. Auth Claude CLI:    claude  (interactive, one-time)"
-echo "  8. Auth GitHub CLI:    gh auth login  (interactive, one-time)"
-echo ""
-echo "  SAVE THIS OUTPUT — it contains your DB password!"
-echo "═══════════════════════════════════════════════════════"
+log "Ports: daemon=4000, projects=5001-5099"
+log "Dashboard: http://<tailscale-ip>/"
