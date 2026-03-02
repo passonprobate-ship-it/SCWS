@@ -82,8 +82,6 @@ PostgreSQL user `scws`, database `scws_daemon`.
 | `claude_runs` | Your execution history (prompt, output, mode, session, duration) |
 | `activity_log` | All actions (created, built, deployed, started, stopped) |
 | `daemon_config` | Key-value daemon settings |
-| `channels` | Notification channels (Telegram, Email) with JSON config, status, verification |
-| `notifications` | Notification delivery log (event, channel, status, error) |
 
 Connection: `postgresql://scws:<password>@localhost:5432/scws_daemon`
 
@@ -93,20 +91,6 @@ Per-project databases are created on demand: `postgresql://scws:<password>@local
 
 - **4000**: SPAWN daemon (fixed — do not change)
 - **5001–5099**: Hosted projects (auto-assigned by daemon, sequential)
-- **5002**: spawn-cortex, **5010**: gpio-toolkit, **5011**: galleria, **5012**: solbot, **5020**: spawn-mcp
-
-## Memory Management
-
-The Pi has 8GB RAM with defense-in-depth memory management:
-
-- **PM2 heap caps**: Every project started via `pm2Start()` gets `--max-old-space-size` (default 256MB) and `--max-memory-restart` (default 307MB). The daemon runs at 192MB/200M.
-- **Build isolation**: Builds use 512MB heap max. Only one build can run at a time (mutex lock in `projects.ts`).
-- **OOM scores**: `/var/www/scws/scripts/set-oom-scores.sh` — daemon=-500, spawn-mcp=-300, projects=+300. Called on startup.
-- **Kernel tuning**: `vm.swappiness=5`, `vm.vfs_cache_pressure=50` in `/etc/sysctl.d/99-spawn-memory.conf`
-- **Docker**: Disabled at boot (saves ~128MB). Start with `sudo systemctl start docker` when needed.
-- **PostgreSQL**: `max_connections=30`
-- **Tiered watchdog**: 70% memory = warn, 85% = auto-stop idle projects, 93% = emergency stop all
-- **Metrics**: `GET /api/metrics/memory?hours=24` returns snapshots. Logged every 10 min to `activity_log`.
 
 ## What You Can Do
 
@@ -142,6 +126,6 @@ Read PM2 logs (`pm2 logs <name>`), check nginx (`sudo nginx -t`), inspect DB (`p
 1. **Be autonomous.** Don't ask permission to write files or run commands. Just do it.
 2. **Be thorough.** After making changes, verify they work. Check logs. Curl endpoints. Run builds.
 3. **Be safe.** Use `execFile` not `exec`. Validate inputs. Don't expose secrets in logs or responses.
-4. **Be efficient.** The Pi has 8GB RAM with memory management in place. Don't install unnecessary packages. Keep builds lean. Builds are capped at 512MB heap and serialized (one at a time).
+4. **Be efficient.** The Pi has 8GB RAM and an SD card. Don't install unnecessary packages. Keep builds lean.
 5. **Leave things running.** After you build something, make sure PM2 is managing it and `pm2 save` persists it across reboots.
 6. **Document your work.** Update the project's CLAUDE.md so your future self (or another Claude session) knows what's there.
