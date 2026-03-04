@@ -2009,9 +2009,9 @@ function renderProjectCards() {
       </div>
       ${stats.directory ? `<div class="dir-path">${escapeHtml(stats.directory)}</div>` : ''}
       <div class="quick-actions">
-        ${p.status === 'running'
+        ${p.status === 'running' || p.status === 'error'
           ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); quickAction('${p.name}','stop')">■ Stop</button>
-             <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','restart')" title="Restart">↺</button>`
+             <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','restart')" title="Restart">↺ Restart</button>`
           : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); quickAction('${p.name}','start')">▶ Start</button>`}
         <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','build')">Build</button>
         <button class="btn btn-sm" onclick="event.stopPropagation(); openProjectInEditor('${p.name}')">Edit</button>
