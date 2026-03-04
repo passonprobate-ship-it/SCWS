@@ -39,6 +39,41 @@ After install, run the onboarding wizard to set up Claude Code CLI and authentic
 sudo -u spawn bash /var/www/scws/projects/spawn-vps/onboard.sh
 ```
 
+---
+
+## Recommended VPS: Vultr
+
+We recommend **[Vultr](https://www.vultr.com/?ref=9876074-9J)** as the preferred cloud provider for SPAWN deployments.
+
+### Why Vultr?
+
+| | |
+|---|---|
+| **Battle-tested** | The SPAWN creator has used Vultr for **8+ years** — reliable, fast, and well-priced. |
+| **Built-in integration** | SPAWN includes a Vultr API integration. Create, manage, and deploy to Vultr instances directly from the dashboard. |
+| **Global footprint** | 32 data centers worldwide with hourly billing starting at $2.50/month. |
+
+### Get Started with Free Credit
+
+| Plan | Deal | Link |
+|------|------|------|
+| **New users** (< $100/mo) | Start with Vultr — great pricing, no commitment | [**Sign up with Vultr**](https://www.vultr.com/?ref=6816669) |
+| **Power users** ($100+/mo) | Get **$300 free credit** to test the platform* | [**Claim $300 Credit**](https://www.vultr.com/?ref=9876074-9J) |
+
+> *$300 credit requires a valid credit card or PayPal. Unused credit expires after 30 days. Referred users must be active 30+ days and use at least $100 in payments.
+
+### Recommended Plans for SPAWN
+
+| Plan | Specs | Price | Best for |
+|------|-------|-------|----------|
+| `vc2-1c-1gb` | 1 vCPU, 1GB RAM, 25GB SSD | $6/mo | Minimal SPAWN — dashboard + 1-2 projects |
+| `vc2-1c-2gb` | 1 vCPU, 2GB RAM, 55GB SSD | $10/mo | **Recommended** — comfortable for AI sessions |
+| `vc2-2c-4gb` | 2 vCPU, 4GB RAM, 80GB SSD | $20/mo | Multiple projects + Claude Code sessions |
+
+Using the links above helps support SPAWN development at no extra cost to you.
+
+---
+
 ## What It Does
 
 You open the dashboard, type a prompt like "build me a URL shortener with analytics", and SPAWN:
@@ -144,11 +179,80 @@ Auto-scales to available RAM. Defense-in-depth across 3 layers:
 - **Watchdog**: 70% warn, 85% auto-stop idle projects, 93% emergency stop + drop caches
 - **OOM killer**: Custom scores — PM2 god daemon protected, projects expendable
 
+### Memory Scaling by RAM
+
+| RAM | Swap | PG Connections | Daemon Heap | PM2 Restart |
+|-----|------|---------------|-------------|-------------|
+| < 1GB | 1GB | 15 | 96MB | 128M |
+| 1-2GB | 1GB | 20 | 128MB | 160M |
+| 2-4GB | 2GB | 30 | 192MB | 200M |
+| 4-8GB | 4GB | 40 | 192MB | 200M |
+| 8GB+ | 4GB | 50 | 256MB | 300M |
+
+## VPS Deployment
+
+For deploying SPAWN to a remote VPS from the Pi (or any machine with SSH access):
+
+```bash
+cd /var/www/scws/projects/spawn-vps
+cp config.example.sh config.sh
+nano config.sh   # Set VPS_HOST at minimum
+bash deploy.sh
+```
+
+| Deploy Flag | What it does |
+|-------------|-------------|
+| *(none)* | Full deploy: bootstrap + daemon + schema |
+| `--bootstrap-only` | Install system deps only, no daemon |
+| `--update-only` | Skip bootstrap, update daemon bundle |
+| `--package` | Create self-contained tarball for manual deploy |
+
+### Post-Deployment
+
+Open `http://<vps-ip>/` and log in with your dashboard token. Then run the onboarding wizard to enable Claude Code AI sessions:
+
+```bash
+ssh root@<vps-ip>
+sudo -u spawn bash /var/www/scws/onboard.sh
+```
+
+## Troubleshooting
+
+**Daemon won't start**: Check PM2 logs:
+```bash
+pm2 logs scws-daemon --lines 50
+```
+
+**Can't connect to dashboard**: Verify firewall allows port 80:
+```bash
+sudo ufw status
+sudo ufw allow 80/tcp
+```
+
+**node-pty build fails**: Ensure build tools are installed:
+```bash
+apt install -y build-essential python3
+cd /var/www/scws/daemon && npm install --omit=dev
+```
+
+**Database errors**: Push schema and fix permissions:
+```bash
+sudo -u postgres psql scws_daemon -f /var/www/scws/scripts/schema.sql
+sudo -u postgres psql scws_daemon -c \
+  "GRANT ALL ON ALL TABLES IN SCHEMA public TO scws;
+   GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO scws;"
+```
+
+**Health check fails**: Verify daemon is listening:
+```bash
+curl -s http://localhost:4000/health
+```
+
 ## Requirements
 
 - Ubuntu 20.04, 22.04, or 24.04
 - amd64 or arm64
-- 1 GB RAM minimum (2+ GB recommended)
+- 512MB RAM minimum (2+ GB recommended)
 - Root access
 
 ## License
