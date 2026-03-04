@@ -32,13 +32,8 @@ backups/
 # === Instance manifest (per-machine, not committed) ===
 .spawn-instance.json
 
-# === Project-specific runtime artifacts ===
-projects/galleria/.cache/
-projects/gpio-toolkit/.lgd-nfy*
-
-# === spawn-vps secrets and tarballs ===
-projects/spawn-vps/config.sh
-projects/spawn-vps/*.tar.gz
+# === Projects — NEVER commit project source to this public repo ===
+projects/
 
 # === Backup token (sourced by offsite script) ===
 scripts/.backup-token
