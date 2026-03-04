@@ -123,9 +123,23 @@ git clone --branch "$BRANCH" "$REPO_URL" "$SCWS_ROOT"
 
 log "Repository cloned to $SCWS_ROOT"
 
-# ── 4. Run bootstrap-vps.sh ────────────────────────────────────────────────
+# ── 4. Run bootstrap ──────────────────────────────────────────────────────
 
-BOOTSTRAP_SCRIPT="$SCWS_ROOT/projects/spawn-vps/bootstrap-vps.sh"
+# Auto-detect Raspberry Pi via device tree
+IS_PI=false
+if [[ -f /proc/device-tree/model ]]; then
+  DT_MODEL=$(tr -d '\0' < /proc/device-tree/model)
+  if echo "$DT_MODEL" | grep -qi "raspberry pi"; then
+    IS_PI=true
+    log "Detected Raspberry Pi: $DT_MODEL"
+  fi
+fi
+
+if $IS_PI; then
+  BOOTSTRAP_SCRIPT="$SCWS_ROOT/projects/spawn-pi/bootstrap-pi.sh"
+else
+  BOOTSTRAP_SCRIPT="$SCWS_ROOT/projects/spawn-vps/bootstrap-vps.sh"
+fi
 
 if [[ ! -f "$BOOTSTRAP_SCRIPT" ]]; then
   err "Bootstrap script not found at $BOOTSTRAP_SCRIPT"
@@ -136,13 +150,29 @@ fi
 log "Running system bootstrap (this takes a few minutes)..."
 
 export SPAWN_DB_PASSWORD
-export SPAWN_USER="${SPAWN_USER:-spawn}"
-export SPAWN_HOSTNAME="${SPAWN_HOSTNAME:-SPAWN}"
-export SPAWN_DOMAIN="${SPAWN_DOMAIN:-}"
-export ENABLE_SSL="${ENABLE_SSL:-false}"
-export SSL_EMAIL="${SSL_EMAIL:-}"
-export ENABLE_TAILSCALE="${ENABLE_TAILSCALE:-false}"
-export INSTALL_DOCKER="${INSTALL_DOCKER:-false}"
+if $IS_PI; then
+  # Pi defaults
+  export SPAWN_USER="${SPAWN_USER:-codeman}"
+  export SPAWN_HOSTNAME="${SPAWN_HOSTNAME:-SPAWN}"
+  export ENABLE_TAILSCALE="${ENABLE_TAILSCALE:-true}"
+  export INSTALL_DOCKER="${INSTALL_DOCKER:-true}"
+  export ENABLE_GPIO="${ENABLE_GPIO:-true}"
+  export ENABLE_I2C="${ENABLE_I2C:-true}"
+  export ENABLE_SPI="${ENABLE_SPI:-true}"
+  export ENABLE_PWM="${ENABLE_PWM:-true}"
+  export ENABLE_UART="${ENABLE_UART:-true}"
+  export ENABLE_CHROMIUM="${ENABLE_CHROMIUM:-true}"
+  export EXTRA_DATABASES="${EXTRA_DATABASES:-spawn_cortex,solbot_db}"
+else
+  # VPS defaults
+  export SPAWN_USER="${SPAWN_USER:-spawn}"
+  export SPAWN_HOSTNAME="${SPAWN_HOSTNAME:-SPAWN}"
+  export SPAWN_DOMAIN="${SPAWN_DOMAIN:-}"
+  export ENABLE_SSL="${ENABLE_SSL:-false}"
+  export SSL_EMAIL="${SSL_EMAIL:-}"
+  export ENABLE_TAILSCALE="${ENABLE_TAILSCALE:-false}"
+  export INSTALL_DOCKER="${INSTALL_DOCKER:-false}"
+fi
 
 bash "$BOOTSTRAP_SCRIPT"
 
@@ -173,20 +203,35 @@ log "Daemon dependencies installed"
 log "Generating daemon .env..."
 
 ENV_TEMPLATE="$SCWS_ROOT/projects/spawn-vps/templates/env.template"
+if $IS_PI && [[ -f "$SCWS_ROOT/projects/spawn-pi/templates/env.template" ]]; then
+  ENV_TEMPLATE="$SCWS_ROOT/projects/spawn-pi/templates/env.template"
+fi
 ENV_FILE="$SCWS_ROOT/daemon/.env"
 
 # Detect base URL
-VPS_PUBLIC_IP=$(curl -s --max-time 5 http://ifconfig.me 2>/dev/null || true)
-if [[ -n "$SPAWN_DOMAIN" ]]; then
-  if [[ "$ENABLE_SSL" == "true" ]]; then
+if [[ -n "${SPAWN_DOMAIN:-}" ]]; then
+  if [[ "${ENABLE_SSL:-false}" == "true" ]]; then
     BASE_URL="https://$SPAWN_DOMAIN"
   else
     BASE_URL="http://$SPAWN_DOMAIN"
   fi
-elif [[ -n "$VPS_PUBLIC_IP" ]]; then
-  BASE_URL="http://$VPS_PUBLIC_IP"
+elif $IS_PI; then
+  # Pi: prefer Tailscale IP, then LAN IP
+  TS_IP=$(tailscale ip -4 2>/dev/null || true)
+  if [[ -n "$TS_IP" ]]; then
+    BASE_URL="http://$TS_IP"
+  else
+    LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    BASE_URL="http://${LAN_IP:-localhost:4000}"
+  fi
 else
-  BASE_URL="http://localhost:4000"
+  # VPS: public IP
+  VPS_PUBLIC_IP=$(curl -s --max-time 5 http://ifconfig.me 2>/dev/null || true)
+  if [[ -n "$VPS_PUBLIC_IP" ]]; then
+    BASE_URL="http://$VPS_PUBLIC_IP"
+  else
+    BASE_URL="http://localhost:4000"
+  fi
 fi
 
 if [[ -f "$ENV_TEMPLATE" ]]; then
@@ -215,6 +260,9 @@ log ".env written to $ENV_FILE"
 log "Generating PM2 ecosystem config..."
 
 ECO_TEMPLATE="$SCWS_ROOT/projects/spawn-vps/templates/ecosystem.template.cjs"
+if $IS_PI && [[ -f "$SCWS_ROOT/projects/spawn-pi/templates/ecosystem.template.cjs" ]]; then
+  ECO_TEMPLATE="$SCWS_ROOT/projects/spawn-pi/templates/ecosystem.template.cjs"
+fi
 ECO_FILE="$SCWS_ROOT/daemon/ecosystem.config.cjs"
 
 if [[ -f "$ECO_TEMPLATE" ]]; then
@@ -343,7 +391,11 @@ printf "\n"
 printf "  ${BOLD}Next steps:${NC}\n"
 printf "    1. Open the dashboard: ${CYAN}${BASE_URL}${NC}\n"
 printf "    2. Run onboarding (Claude CLI, auth, GitHub):\n"
-printf "       ${CYAN}sudo -u $SPAWN_USER bash $SCWS_ROOT/projects/spawn-vps/onboard.sh${NC}\n"
+if $IS_PI; then
+  printf "       ${CYAN}sudo -u $SPAWN_USER bash $SCWS_ROOT/projects/spawn-pi/onboard.sh${NC}\n"
+else
+  printf "       ${CYAN}sudo -u $SPAWN_USER bash $SCWS_ROOT/projects/spawn-vps/onboard.sh${NC}\n"
+fi
 printf "    3. Start building! Open the Terminal page in the dashboard.\n"
 printf "\n"
 printf "  ${BOLD}Useful commands:${NC}\n"
