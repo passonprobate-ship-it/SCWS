@@ -1,0 +1,1 @@
+../spawn-vps/onboard.sh

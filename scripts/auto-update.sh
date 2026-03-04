@@ -82,13 +82,19 @@ notify_cortex() {
 # ── Lock ─────────────────────────────────────────────────────────────────────
 
 if [[ -f "$LOCK_FILE" ]]; then
+  lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
   lock_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
-  if (( lock_age > LOCK_STALE_SEC )); then
-    warn "Stale lock file (${lock_age}s old), removing"
-    rm -f "$LOCK_FILE"
+  if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+    if (( lock_age > LOCK_STALE_SEC )); then
+      warn "Stale lock file (${lock_age}s old, PID $lock_pid still running), removing"
+      rm -f "$LOCK_FILE"
+    else
+      log "Another update is running (PID $lock_pid, age: ${lock_age}s), exiting"
+      exit 0
+    fi
   else
-    log "Another update is running (lock age: ${lock_age}s), exiting"
-    exit 0
+    warn "Lock file exists but PID ${lock_pid:-unknown} is not running, removing stale lock"
+    rm -f "$LOCK_FILE"
   fi
 fi
 

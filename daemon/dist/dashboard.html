@@ -2189,6 +2189,8 @@ function setupSessionClipboard(cterm, container, getWs) {
   });
 
   // Document-level paste listener (capture phase) for HTTP image paste
+  if (window._pasteListenerAdded) return;
+  window._pasteListenerAdded = true;
   document.addEventListener("paste", async (e) => {
     if (!pasteIntercepted) return;
     pasteIntercepted = false;
@@ -2962,6 +2964,7 @@ async function createProject() {
 }
 
 // ── Claude (Project Tab) ─────────────────────────────────────────
+let claudeMode;
 function setClaudeMode(mode, btn) {
   claudeMode = mode;
   btn.parentElement.querySelectorAll("button").forEach(b => b.classList.remove("active"));
@@ -3982,7 +3985,7 @@ async function sysAction(action) {
   }
   try {
     const res = await api(`/api/system/${action}`, { method: "POST" });
-    if (!res.ok) { toast(`Failed: ${res.error || "Unknown error"}`, "error"); return; }
+    if (res.error) { toast(`Failed: ${res.error}`, "error"); return; }
     if (action === "restart-daemon") {
       toast("Daemon restarting... reconnecting", "info", 10000);
       const poll = setInterval(async () => {
@@ -4406,13 +4409,13 @@ function showAddMcpModal() {
       { name: "auth", label: "Authorization Header", type: "text", placeholder: "Bearer token..." },
     ],
     confirmText: "Add Server",
-    onConfirm: async (data) => {
+    onConfirm: async ([name, type, url, auth]) => {
       const body = {
-        name: data.name,
-        type: data.type || "streamableHttp",
-        url: data.url,
+        name,
+        type: type || "streamableHttp",
+        url,
       };
-      if (data.auth) body.headers = { Authorization: data.auth };
+      if (auth) body.headers = { Authorization: auth };
       try {
         await api("/api/mcp/servers", { method: "POST", body: JSON.stringify(body) });
         toast("MCP server added", "success");
@@ -4435,12 +4438,12 @@ function editMcpServer(name) {
       { name: "auth", label: "Authorization (blank = keep existing)", type: "text", placeholder: "Bearer ***" },
     ],
     confirmText: "Save",
-    onConfirm: async (data) => {
+    onConfirm: async ([type, url, auth]) => {
       const body = {};
-      if (data.type) body.type = data.type;
-      if (data.url) body.url = data.url;
-      if (data.auth && data.auth !== "Bearer ***" && data.auth !== "***") {
-        body.headers = { Authorization: data.auth };
+      if (type) body.type = type;
+      if (url) body.url = url;
+      if (auth && auth !== "Bearer ***" && auth !== "***") {
+        body.headers = { Authorization: auth };
       }
       try {
         await api(`/api/mcp/servers/${name}`, { method: "PATCH", body: JSON.stringify(body) });

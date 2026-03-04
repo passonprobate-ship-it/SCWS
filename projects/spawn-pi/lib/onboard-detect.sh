@@ -1,0 +1,1 @@
+../../projects/spawn-vps/lib/onboard-detect.sh

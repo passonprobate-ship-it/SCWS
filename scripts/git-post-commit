@@ -3,7 +3,7 @@
 # Installed in all SPAWN-managed repos
 
 DAEMON_URL="http://127.0.0.1:4000"
-TOKEN=$(grep '^DASHBOARD_TOKEN=' /var/www/scws/daemon/.env 2>/dev/null | cut -d= -f2)
+TOKEN=$(grep '^DASHBOARD_TOKEN=' /var/www/scws/daemon/.env 2>/dev/null | cut -d= -f2-)
 
 if [ -z "$TOKEN" ]; then exit 0; fi
 

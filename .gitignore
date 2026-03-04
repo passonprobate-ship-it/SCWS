@@ -28,12 +28,16 @@ backups/
 # === Backup / old builds ===
 *.bak
 *.pre-funnel
+*.pre-opt
 
 # === Instance manifest (per-machine, not committed) ===
 .spawn-instance.json
 
-# === Projects — NEVER commit project source to this public repo ===
-projects/
+# === Projects — user-created projects are not committed ===
+projects/*
+# Deployment tooling IS tracked (needed by installer)
+!projects/spawn-vps/
+!projects/spawn-pi/
 
 # === Backup token (sourced by offsite script) ===
 scripts/.backup-token

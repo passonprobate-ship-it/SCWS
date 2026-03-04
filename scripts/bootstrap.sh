@@ -96,12 +96,15 @@ fi
 echo "deb [arch=arm64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
   > /etc/apt/sources.list.d/github-cli.list
 
+# Detect Ubuntu codename for APT repos
+UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
+
 # Tailscale
 if [[ ! -f /usr/share/keyrings/tailscale-archive-keyring.gpg ]]; then
-  curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+  curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${UBUNTU_CODENAME}.noarmor.gpg" \
     -o /usr/share/keyrings/tailscale-archive-keyring.gpg
 fi
-echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main" \
+echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu ${UBUNTU_CODENAME} main" \
   > /etc/apt/sources.list.d/tailscale.list
 
 # Docker
@@ -110,7 +113,7 @@ if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
 fi
-echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
   > /etc/apt/sources.list.d/docker.list
 
 # ── 5. System packages ──────────────────────────────────────────────────────
@@ -192,7 +195,9 @@ if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='scws'" | 
   log "Creating PostgreSQL role 'scws'..."
   echo "Enter password for PostgreSQL role 'scws':"
   read -rs SCWS_DB_PASSWORD
-  sudo -u postgres psql -c "CREATE ROLE scws WITH LOGIN PASSWORD '$SCWS_DB_PASSWORD';"
+  # Escape single quotes to prevent SQL injection
+  SCWS_DB_PASSWORD_ESCAPED="${SCWS_DB_PASSWORD//\'/\'\'}"
+  sudo -u postgres psql -c "CREATE ROLE scws WITH LOGIN PASSWORD '${SCWS_DB_PASSWORD_ESCAPED}';"
 else
   log "PostgreSQL role 'scws' already exists."
 fi

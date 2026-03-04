@@ -36,6 +36,9 @@ SPAWN_DOMAIN=spawn.example.com ENABLE_SSL=true SSL_EMAIL=you@example.com \
 After install, run the onboarding wizard to set up Claude Code CLI and authentication:
 
 ```bash
+# On a Raspberry Pi:
+sudo -u spawn bash /var/www/scws/projects/spawn-pi/onboard.sh
+# On a VPS:
 sudo -u spawn bash /var/www/scws/projects/spawn-vps/onboard.sh
 ```
 
@@ -93,7 +96,7 @@ If something breaks, it reads the logs, diagnoses the issue, fixes it, and redep
 /var/www/scws/
 ├── daemon/                   ← Control plane (Express 5, port 4000)
 │   ├── dist/index.cjs        ← Built daemon bundle
-│   ├── dist/dashboard.html   ← Web dashboard SPA (single-file, ~5400 lines)
+│   ├── dist/dashboard.html   ← Web dashboard SPA (single-file, ~7400 lines)
 │   ├── .env                  ← DATABASE_URL, DASHBOARD_TOKEN, etc.
 │   └── ecosystem.config.cjs  ← PM2 config with heap caps
 ├── projects/                 ← AI-created projects live here
@@ -113,6 +116,8 @@ If something breaks, it reads the logs, diagnoses the issue, fixes it, and redep
 ```
 
 ## Dashboard
+
+![SPAWN Dashboard](https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/docs/screenshot-dashboard.png)
 
 The web dashboard is a single-file SPA at `http://<host>/` providing full control over the system.
 
@@ -213,7 +218,7 @@ Open `http://<vps-ip>/` and log in with your dashboard token. Then run the onboa
 
 ```bash
 ssh root@<vps-ip>
-sudo -u spawn bash /var/www/scws/onboard.sh
+sudo -u spawn bash /var/www/scws/projects/spawn-vps/onboard.sh
 ```
 
 ## Troubleshooting
@@ -228,6 +233,8 @@ pm2 logs scws-daemon --lines 50
 sudo ufw status
 sudo ufw allow 80/tcp
 ```
+
+> **Security note**: The dashboard provides full terminal access and project control. Use Tailscale, a VPN, or firewall rules to restrict who can reach port 80. The bearer token is transmitted over HTTP — use a reverse proxy with SSL for internet-facing deployments.
 
 **node-pty build fails**: Ensure build tools are installed:
 ```bash

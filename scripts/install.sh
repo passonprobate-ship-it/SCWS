@@ -379,14 +379,26 @@ else
   printf "  Check logs: ${CYAN}sudo -u $SPAWN_USER pm2 logs scws-daemon --lines 30${NC}\n\n"
 fi
 
+CREDS_FILE="$SCWS_ROOT/daemon/.install-credentials"
+cat > "$CREDS_FILE" <<CREDSEOF
+SPAWN Install Credentials — $(date)
+Dashboard URL:    ${BASE_URL}
+Dashboard Token:  ${DASHBOARD_TOKEN}
+DB Password:      ${SPAWN_DB_PASSWORD}
+System User:      ${SPAWN_USER}
+Install Path:     ${SCWS_ROOT}
+.env:             ${SCWS_ROOT}/daemon/.env
+CREDSEOF
+chmod 600 "$CREDS_FILE"
+chown "${SPAWN_USER}:${SPAWN_USER}" "$CREDS_FILE"
+
 printf "  ${BOLD}Dashboard:${NC}       ${CYAN}${BASE_URL}${NC}\n"
-printf "  ${BOLD}Dashboard Token:${NC} ${CYAN}${DASHBOARD_TOKEN}${NC}\n"
-printf "  ${BOLD}DB Password:${NC}     ${CYAN}${SPAWN_DB_PASSWORD}${NC}\n"
 printf "  ${BOLD}System User:${NC}     ${CYAN}${SPAWN_USER}${NC}\n"
 printf "  ${BOLD}Install Path:${NC}    ${CYAN}${SCWS_ROOT}${NC}\n"
 printf "  ${BOLD}.env:${NC}            ${CYAN}${SCWS_ROOT}/daemon/.env${NC}\n"
 printf "\n"
-printf "  ${DIM}Save these credentials — they won't be shown again.${NC}\n"
+printf "  ${YELLOW}${BOLD}Credentials saved to:${NC} ${CYAN}${CREDS_FILE}${NC}\n"
+printf "  ${DIM}(readable only by ${SPAWN_USER} — chmod 600)${NC}\n"
 printf "\n"
 printf "  ${BOLD}Next steps:${NC}\n"
 printf "    1. Open the dashboard: ${CYAN}${BASE_URL}${NC}\n"
