@@ -2,6 +2,41 @@
 
 A self-programming autonomous web node running on a Raspberry Pi 5. Uses Claude AI to autonomously create, build, deploy, and manage web projects — writing code, installing dependencies, configuring databases, setting up reverse proxies, and starting processes without manual intervention.
 
+## Quick Install
+
+Deploy SPAWN on any fresh Ubuntu VPS (20.04/22.04/24.04, amd64 or arm64) with one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/scripts/install.sh | bash
+```
+
+This installs everything: Node.js, PostgreSQL, nginx, PM2, the SPAWN daemon, and sets up auto-updates. Takes about 3-5 minutes. Run as root on a fresh server.
+
+**Optional environment variables** (set before running):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SPAWN_USER` | `spawn` | Linux user to create |
+| `SPAWN_HOSTNAME` | `SPAWN` | Server hostname |
+| `SPAWN_DOMAIN` | *(none)* | Public domain for nginx |
+| `ENABLE_SSL` | `false` | Let's Encrypt SSL |
+| `SSL_EMAIL` | *(none)* | Email for Let's Encrypt |
+| `ENABLE_TAILSCALE` | `false` | Install Tailscale VPN |
+| `INSTALL_DOCKER` | `false` | Install Docker |
+
+Example with options:
+
+```bash
+SPAWN_DOMAIN=spawn.example.com ENABLE_SSL=true SSL_EMAIL=you@example.com \
+  curl -fsSL https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/scripts/install.sh | bash
+```
+
+After install, run the onboarding wizard to set up Claude Code CLI and authentication:
+
+```bash
+sudo -u spawn bash /var/www/scws/projects/spawn-vps/onboard.sh
+```
+
 ## Architecture
 
 ```
