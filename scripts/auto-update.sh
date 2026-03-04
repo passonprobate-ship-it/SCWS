@@ -275,22 +275,28 @@ for proj_dir in "${!PROJECT_CHANGES[@]}"; do
   # npm install if package.json changed
   if [[ "$changes" == *"npm"* ]] && [[ -f "$proj_path/package.json" ]]; then
     log "  npm install for $proj_dir..."
-    if ! (cd "$proj_path" && npm install --omit=dev --no-audit --no-fund 2>&1 | tail -1); then
+    npm_output=""
+    if ! npm_output=$(cd "$proj_path" && npm install --omit=dev --no-audit --no-fund 2>&1); then
       warn "  npm install failed for $proj_dir"
+      printf '%s\n' "$npm_output" | tail -3
       (( PROJECTS_FAILED++ )) || true
       continue
     fi
+    printf '%s\n' "$npm_output" | tail -1
   fi
 
   # Build if source changed and build script exists
   if [[ "$changes" == *"source"* ]] && [[ -f "$proj_path/package.json" ]]; then
     if jq -e '.scripts.build' "$proj_path/package.json" >/dev/null 2>&1; then
       log "  Building $proj_dir..."
-      if ! (cd "$proj_path" && npm run build 2>&1 | tail -3); then
+      build_output=""
+      if ! build_output=$(cd "$proj_path" && npm run build 2>&1); then
         warn "  Build failed for $proj_dir"
+        printf '%s\n' "$build_output" | tail -5
         (( PROJECTS_FAILED++ )) || true
         continue
       fi
+      printf '%s\n' "$build_output" | tail -3
     fi
   fi
 
@@ -315,7 +321,13 @@ fi  # PROJECT_COUNT > 0
 
 if $DAEMON_NPM; then
   log "Running npm install for daemon..."
-  (cd "$SCWS_ROOT/daemon" && npm install --omit=dev --no-audit --no-fund 2>&1 | tail -1) || warn "Daemon npm install failed"
+  daemon_npm_out=""
+  if ! daemon_npm_out=$(cd "$SCWS_ROOT/daemon" && npm install --omit=dev --no-audit --no-fund 2>&1); then
+    warn "Daemon npm install failed"
+    printf '%s\n' "$daemon_npm_out" | tail -3
+  else
+    printf '%s\n' "$daemon_npm_out" | tail -1
+  fi
 fi
 
 # ── Scripts chmod ────────────────────────────────────────────────────────────

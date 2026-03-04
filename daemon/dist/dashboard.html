@@ -2496,9 +2496,10 @@ function renderClaudeSessionTabs() {
     const name = s.projectName || "unknown";
     const classes = 'claude-session-tab' + (isActive ? ' active' : '') + (isDisconnected ? ' disconnected' : '');
     const dot = '<span class="tab-status-dot ' + (isDisconnected ? 'disconnected' : 'connected') + '"></span> ';
-    return '<button class="' + classes + '" onclick="switchClaudeSession(\'' + sid + '\')">'
+    const safeSid = escapeHtml(sid);
+    return '<button class="' + classes + '" onclick="switchClaudeSession(\'' + safeSid + '\')">'
       + dot + escapeHtml(name)
-      + ' <span class="tab-close" onclick="event.stopPropagation(); killClaudeSessionUI(\'' + sid + '\')">&times;</span>'
+      + ' <span class="tab-close" onclick="event.stopPropagation(); killClaudeSessionUI(\'' + safeSid + '\')">&times;</span>'
       + '</button>';
   }).join("");
 }
@@ -3382,6 +3383,7 @@ async function connectTerminal() {
 function disconnectTerminal() {
   termManualDisconnect = true;
   if (termReconnectTimer) { clearTimeout(termReconnectTimer); termReconnectTimer = null; }
+  if (termResizeObserver) { termResizeObserver.disconnect(); termResizeObserver = null; }
   if (termWs) {
     termWs.close();
     termWs = null;
