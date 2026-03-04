@@ -3389,7 +3389,10 @@ function showDeployTargetModal() {
 // ── System ────────────────────────────────────────────────────────
 async function loadSystem() {
   try {
-    const data = await api("/api/system");
+    const [data, versionData] = await Promise.all([
+      api("/api/system"),
+      fetch("/api/version").then(r => r.ok ? r.json() : null).catch(() => null)
+    ]);
     const memInfo = parseMemory(data.memory);
     const diskInfo = parseDisk(data.disk);
 
@@ -3409,7 +3412,10 @@ async function loadSystem() {
 
     document.getElementById("system-info").innerHTML = `
       <div class="card">
-        <div style="font-weight:600; margin-bottom:8px;">Daemon</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-weight:600;">Daemon</span>
+          ${versionData ? `<span style="font-size:11px; font-weight:600; color:var(--accent); background:rgba(99,102,241,0.1); padding:2px 8px; border-radius:4px;">v${versionData.version} <span style="color:var(--text-muted);font-weight:400;">${versionData.gitHash || ''}</span></span>` : ''}
+        </div>
         <div style="font-size:12px; color:var(--text-muted);">
           PID: ${data.daemon.pid} &middot; Node ${data.daemon.nodeVersion} &middot;
           Uptime: ${formatUptime(data.daemon.uptime)}
@@ -4707,8 +4713,8 @@ const HELP_TOPICS = [
     icon: "🤖", title: "What is SPAWN?",
     desc: "Overview of the Self-Programming Autonomous Web Node",
     detail: `<div class="help-section">
-      <p>SPAWN is a <strong>Self-Programming Autonomous Web Node</strong> running on a Raspberry Pi 5. It uses Claude AI to autonomously create, build, deploy, and manage web projects — writing code, installing dependencies, configuring databases, setting up reverse proxies, and starting processes, all without manual intervention.</p>
-      <p>The dashboard you're looking at is the control plane. From here you can manage projects, monitor system health, run Claude sessions, configure notifications, and more. SPAWN is accessible over your Tailscale VPN.</p>
+      <p>SPAWN is a <strong>Self-Programming Autonomous Web Node</strong>. Give it a prompt, and it writes the code, installs dependencies, configures the database, sets up the reverse proxy, starts the process, and makes it live — all by itself. Powered by Claude AI.</p>
+      <p>Runs on any Ubuntu server — from a Raspberry Pi to a cloud VPS. The dashboard you're looking at is the control plane. From here you can manage projects, monitor system health, run Claude sessions, configure notifications, and more.</p>
     </div>`
   },
   {
@@ -4767,13 +4773,13 @@ const HELP_TOPICS = [
   },
   {
     icon: "🔧", title: "About SPAWN",
-    desc: "Hardware specs and tech stack",
+    desc: "Platform requirements and tech stack",
     detail: `<div class="help-section">
-      <h3>Hardware</h3>
+      <h3>Platform</h3>
       <ul>
-        <li>Raspberry Pi 5 — 8GB RAM</li>
-        <li>Ubuntu Server 24.04 ARM64</li>
-        <li>Accessible via Tailscale VPN</li>
+        <li>Ubuntu 20.04, 22.04, or 24.04 (amd64 or arm64)</li>
+        <li>Runs on VPS, bare metal, or Raspberry Pi</li>
+        <li>1 GB RAM minimum, 2+ GB recommended</li>
       </ul>
       <h3>Tech Stack</h3>
       <ul>
