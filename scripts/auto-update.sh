@@ -66,8 +66,14 @@ notify_cortex() {
   fi
   # Only attempt if cortex is running
   if pm2 pid spawn-cortex >/dev/null 2>&1 && [[ "$(pm2 pid spawn-cortex 2>/dev/null)" != "0" ]]; then
+    local cortex_token=""
+    local cortex_env="$SCWS_ROOT/projects/spawn-cortex/.env"
+    if [[ -f "$cortex_env" ]]; then
+      cortex_token=$(grep -E '^AUTH_TOKEN=' "$cortex_env" | cut -d= -f2- | tr -d '[:space:]' || true)
+    fi
     curl -sf -X POST "http://localhost:5002/api/notify" \
       -H "Content-Type: application/json" \
+      ${cortex_token:+-H "Authorization: Bearer $cortex_token"} \
       -d "{\"message\":$(printf '%s' "$message" | jq -Rs .)}" \
       >/dev/null 2>&1 || warn "Failed to notify cortex"
   fi

@@ -1124,6 +1124,7 @@
           <textarea id="claude-prompt" class="textarea" rows="4" placeholder="What should Claude do?"></textarea>
         </div>
         <button class="btn btn-primary" id="claude-run-btn" onclick="runClaudeOnProject()">Run Claude</button>
+        <button class="btn btn-red" id="claude-cancel-btn" onclick="cancelClaudeRun()" style="display:none; margin-left:8px;">Cancel</button>
         <div id="claude-output" class="log-viewer mt-12" style="display:none;"></div>
         <div class="subtitle mt-20">Run History</div>
         <div id="claude-runs"></div>
@@ -1137,7 +1138,9 @@
           <button class="btn" onclick="githubInit()">Init Repo</button>
           <button class="btn" onclick="githubPush()">Push</button>
           <button class="btn" onclick="githubPull()">Pull</button>
+          <button class="btn" onclick="loadGitStatus()">Status / Diff</button>
         </div>
+        <div id="git-status-output" class="log-viewer mt-12" style="display:none; max-height:400px; overflow:auto; font-size:12px; white-space:pre-wrap;"></div>
       </div>
 
       <!-- Tab: Deploy -->
@@ -1161,8 +1164,10 @@
           <input id="setting-entry-file" class="input" placeholder="dist/index.js">
         </div>
         <div class="form-group">
-          <label class="form-label">Environment Variables (JSON)</label>
-          <textarea id="setting-env-vars" class="textarea" rows="4" placeholder='{"KEY": "value"}'></textarea>
+          <label class="form-label">Environment Variables</label>
+          <div id="env-vars-editor" style="margin-bottom:8px;"></div>
+          <button class="btn btn-small" onclick="addEnvRow()" type="button" style="font-size:12px;">+ Add Variable</button>
+          <textarea id="setting-env-vars" class="textarea" rows="2" placeholder='{"KEY": "value"}' style="display:none;"></textarea>
         </div>
         <button class="btn btn-primary" onclick="saveProjectSettings()">Save Settings</button>
         <div class="mt-20">
@@ -1428,6 +1433,10 @@
             <span id="editor-lang">—</span>
             <span id="editor-cursor">Ln 1, Col 1</span>
             <span>UTF-8</span>
+            <span style="margin-left:auto; display:flex; gap:6px;">
+              <button class="btn btn-sm" onclick="editorSaveFile()" title="Save (Ctrl+S)" style="font-size:11px; padding:1px 8px;">Save</button>
+              <button class="btn btn-sm btn-primary" onclick="editorSaveBuildRestart()" title="Save + Build + Restart" style="font-size:11px; padding:1px 8px;">Save + Build + Restart</button>
+            </span>
           </div>
         </div>
       </div>
@@ -1869,7 +1878,7 @@ ${cmdBlock('bash /var/www/scws/onboard.sh --step 5')}`
 
     el.innerHTML = html;
   } catch (err) {
-    el.innerHTML = '<div style="color:var(--red);">Failed to load onboarding status: ' + (err.message || err) + '</div>';
+    el.innerHTML = '<div style="color:var(--red);">Failed to load onboarding status: ' + escapeHtml(err.message || String(err)) + '</div>';
   }
 }
 
@@ -2801,9 +2810,9 @@ async function loadProjectDetail(name) {
     const p = currentProject;
 
     document.getElementById("detail-name").textContent = p.displayName;
-    document.getElementById("detail-status").innerHTML = `<span class="badge badge-${p.status === 'running' ? 'green' : p.status === 'error' ? 'red' : 'dim'}">${p.status}</span>`;
-    document.getElementById("detail-framework").innerHTML = `<span class="badge badge-blue">${p.framework}</span>`;
-    document.getElementById("detail-port").innerHTML = `<span class="badge badge-dim">:${p.port}</span>`;
+    document.getElementById("detail-status").innerHTML = `<span class="badge badge-${p.status === 'running' ? 'green' : p.status === 'error' ? 'red' : 'dim'}">${escapeHtml(p.status)}</span>`;
+    document.getElementById("detail-framework").innerHTML = `<span class="badge badge-blue">${escapeHtml(p.framework || '')}</span>`;
+    document.getElementById("detail-port").innerHTML = `<span class="badge badge-dim">:${escapeHtml(String(p.port))}</span>`;
 
     const openLink = document.getElementById("detail-open-link");
     openLink.href = `/${p.name}/`;
@@ -2820,6 +2829,7 @@ async function loadProjectDetail(name) {
     document.getElementById("setting-build-cmd").value = p.buildCommand || "";
     document.getElementById("setting-entry-file").value = p.entryFile || "";
     document.getElementById("setting-env-vars").value = p.envVars || "{}";
+    renderEnvEditor(p.envVars || "{}");
     document.getElementById("github-repo-info").textContent = p.gitRepo ? `Repo: ${p.gitRepo}` : "No repo linked.";
     renderDeployTargets(p);
     refreshLogs();
@@ -2903,7 +2913,7 @@ async function saveProjectSettings() {
       body: {
         buildCommand: document.getElementById("setting-build-cmd").value || null,
         entryFile: document.getElementById("setting-entry-file").value || "dist/index.js",
-        envVars: document.getElementById("setting-env-vars").value || "{}",
+        envVars: collectEnvVars(),
       },
     });
     toast("Settings saved", "success");
@@ -2968,14 +2978,18 @@ async function runClaudeOnProject() {
   runBtn.textContent = "Running...";
   outputEl.style.display = "block";
   outputEl.textContent = "Claude is working...";
+  const cancelBtn = document.getElementById("claude-cancel-btn");
 
   try {
     const { runId } = await api("/api/claude/run", {
       method: "POST",
       body: { projectName: currentProject.name, prompt, mode: claudeMode },
     });
+    window._activeClaudeRunId = runId;
+    cancelBtn.style.display = "inline-block";
     // Stream output
     const es = new EventSource(`/api/claude/stream/${runId}?token=${encodeURIComponent(token)}`);
+    window._activeClaudeES = es;
     outputEl.textContent = "";
     es.onmessage = (e) => {
       try {
@@ -2991,6 +3005,9 @@ async function runClaudeOnProject() {
           es.close();
           runBtn.disabled = false;
           runBtn.textContent = "Run Claude";
+          cancelBtn.style.display = "none";
+          window._activeClaudeRunId = null;
+          window._activeClaudeES = null;
           document.getElementById("claude-prompt").value = "";
           loadClaudeRuns();
           toast(`Claude ${obj.status} (${Math.round((obj.duration || 0) / 1000)}s)`, obj.status === "completed" ? "success" : "error");
@@ -3001,13 +3018,71 @@ async function runClaudeOnProject() {
       es.close();
       runBtn.disabled = false;
       runBtn.textContent = "Run Claude";
+      cancelBtn.style.display = "none";
+      window._activeClaudeRunId = null;
+      window._activeClaudeES = null;
     };
   } catch (err) {
     outputEl.textContent = `Error: ${err.message}`;
     runBtn.disabled = false;
     runBtn.textContent = "Run Claude";
+    cancelBtn.style.display = "none";
     toast(`Claude failed: ${err.message}`, "error");
   }
+}
+
+async function cancelClaudeRun() {
+  const runId = window._activeClaudeRunId;
+  if (!runId) return;
+  try {
+    await api(`/api/claude/abort/${runId}`, { method: "POST" });
+    if (window._activeClaudeES) window._activeClaudeES.close();
+    document.getElementById("claude-run-btn").disabled = false;
+    document.getElementById("claude-run-btn").textContent = "Run Claude";
+    document.getElementById("claude-cancel-btn").style.display = "none";
+    window._activeClaudeRunId = null;
+    window._activeClaudeES = null;
+    toast("Claude run cancelled", "info");
+  } catch (err) {
+    toast(`Cancel failed: ${err.message}`, "error");
+  }
+}
+
+// ── Environment Variables Key-Value Editor ──
+function renderEnvEditor(jsonStr) {
+  const container = document.getElementById("env-vars-editor");
+  let obj = {};
+  try { obj = JSON.parse(jsonStr || "{}"); } catch { obj = {}; }
+  container.innerHTML = "";
+  for (const [key, val] of Object.entries(obj)) {
+    addEnvRowWithValues(container, key, String(val));
+  }
+}
+
+function addEnvRowWithValues(container, key, val) {
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex; gap:6px; margin-bottom:4px; align-items:center;";
+  row.innerHTML = `<input class="input env-key" value="${escapeHtml(key)}" placeholder="KEY" style="flex:1; font-size:12px; padding:4px 8px;">
+    <input class="input env-val" value="${escapeHtml(val)}" placeholder="value" style="flex:2; font-size:12px; padding:4px 8px;">
+    <button class="btn btn-small" onclick="this.parentElement.remove()" style="font-size:11px; padding:2px 6px; color:var(--red);" type="button">&times;</button>`;
+  container.appendChild(row);
+}
+
+function addEnvRow() {
+  const container = document.getElementById("env-vars-editor");
+  addEnvRowWithValues(container, "", "");
+  container.lastElementChild.querySelector(".env-key").focus();
+}
+
+function collectEnvVars() {
+  const rows = document.querySelectorAll("#env-vars-editor > div");
+  const obj = {};
+  for (const row of rows) {
+    const key = row.querySelector(".env-key").value.trim();
+    const val = row.querySelector(".env-val").value;
+    if (key) obj[key] = val;
+  }
+  return JSON.stringify(obj);
 }
 
 async function loadClaudeRuns() {
@@ -3483,6 +3558,37 @@ async function githubPull() {
   } catch (err) { toast(`Failed: ${err.message}`, "error"); }
 }
 
+async function loadGitStatus() {
+  if (!currentProject) return;
+  const out = document.getElementById("git-status-output");
+  out.style.display = "block";
+  out.textContent = "Loading git status...";
+  try {
+    const projPath = `/var/www/scws/projects/${currentProject.name}`;
+    const statusRes = await api(`/api/files/exec`, {
+      method: "POST",
+      body: { command: "git", args: ["status", "--short"], cwd: projPath }
+    });
+    const branchRes = await api(`/api/files/exec`, {
+      method: "POST",
+      body: { command: "git", args: ["branch", "--show-current"], cwd: projPath }
+    }).catch(() => ({ stdout: "unknown" }));
+    const diffRes = await api(`/api/files/exec`, {
+      method: "POST",
+      body: { command: "git", args: ["diff", "--stat"], cwd: projPath }
+    }).catch(() => ({ stdout: "" }));
+    let text = `Branch: ${(branchRes.stdout || "").trim()}\n\n`;
+    text += "─── Status ───\n";
+    text += (statusRes.stdout || "").trim() || "(clean)";
+    if (diffRes.stdout && diffRes.stdout.trim()) {
+      text += "\n\n─── Diff Summary ───\n" + diffRes.stdout.trim();
+    }
+    out.textContent = text;
+  } catch (err) {
+    out.textContent = "Error: " + err.message;
+  }
+}
+
 // ── Deploy ────────────────────────────────────────────────────────
 function renderDeployTargets(p) {
   const targets = JSON.parse(p.deployTargets || "[]");
@@ -3607,6 +3713,13 @@ async function loadSystem() {
           </div>` : ''}
         </div>
       </div>
+      <div class="card mt-12" id="memory-chart-card" style="display:none;">
+        <div class="flex-between" style="margin-bottom:8px;">
+          <span style="font-weight:600; font-size:13px;">Memory History (24h)</span>
+          <span id="memory-chart-range" style="font-size:11px; color:var(--text-muted);"></span>
+        </div>
+        <canvas id="memory-chart" height="80" style="width:100%;"></canvas>
+      </div>
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
         <div class="card">
           <div style="font-weight:600; margin-bottom:4px;">CPU Temperature</div>
@@ -3630,13 +3743,64 @@ async function loadSystem() {
       </div>
     `;
 
-    // Load PM2 processes + watchdog + network
+    // Load PM2 processes + watchdog + network + memory chart
     loadPM2Processes();
     loadWatchdog();
     loadNetworkStatus().then(() => renderNetworkCards());
+    loadMemoryChart();
   } catch (err) {
-    document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed: ${err.message}</div>`;
+    document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed: ${escapeHtml(err.message || String(err))}</div>`;
   }
+}
+
+async function loadMemoryChart() {
+  try {
+    const snapshots = await api("/api/metrics/memory?hours=24");
+    if (!snapshots || !snapshots.length) return;
+    const card = document.getElementById("memory-chart-card");
+    card.style.display = "block";
+    const canvas = document.getElementById("memory-chart");
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * dpr;
+    canvas.height = 80 * dpr;
+    ctx.scale(dpr, dpr);
+    const w = canvas.offsetWidth, h = 80;
+    const pcts = snapshots.map(s => {
+      const d = typeof s.details === "string" ? JSON.parse(s.details) : s.details;
+      return d.memPct || d.mem_pct || d.usedPct || 0;
+    });
+    if (!pcts.length) return;
+    const min = Math.max(0, Math.min(...pcts) - 5);
+    const max = Math.min(100, Math.max(...pcts) + 5);
+    const range = max - min || 1;
+    // Draw grid
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const y = h * i / 3;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    // Draw line
+    ctx.strokeStyle = "#7c6aef";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < pcts.length; i++) {
+      const x = (i / (pcts.length - 1)) * w;
+      const y = h - ((pcts[i] - min) / range) * h;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Fill below
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(124,106,239,0.1)";
+    ctx.fill();
+    // Range label
+    const rangeEl = document.getElementById("memory-chart-range");
+    rangeEl.textContent = `${Math.round(Math.min(...pcts))}% — ${Math.round(Math.max(...pcts))}% (${pcts.length} samples)`;
+  } catch {}
 }
 
 async function loadPM2Processes() {
@@ -4899,11 +5063,11 @@ const HELP_TOPICS = [
       <div class="help-page-item"><strong>MCP <span class="help-kbd">Ctrl+4</span></strong><span>MCP (Model Context Protocol) server status and memory management. Browse, create, and delete persistent memories.</span></div>
       <div class="help-page-item"><strong>Channels <span class="help-kbd">Ctrl+5</span></strong><span>Notification channels — configure email, webhook, and other alert destinations for system events.</span></div>
       <div class="help-page-item"><strong>Cortex <span class="help-kbd">Ctrl+6</span></strong><span>Scheduler and automation — cron jobs, webhook ingress endpoints, and the Cortex orchestration engine.</span></div>
-      <div class="help-page-item"><strong>Editor</strong><span>Full code editor powered by Monaco (VS Code engine). Browse all projects in the file tree, open multiple files in tabs, edit with syntax highlighting, and save with Ctrl+S. Open from the sidebar to see all projects, or click Edit on a project card to jump directly to that project's files.</span></div>
+      <div class="help-page-item"><strong>Editor</strong><span>Full code editor powered by Monaco (VS Code engine). Browse all projects in the file tree, open multiple files in tabs, and edit with syntax highlighting for 50+ languages.<br><br><strong>Saving files:</strong> Press <strong>Ctrl+S</strong> to save the active file. Changes are written directly to disk on the server via the API. Unsaved changes are indicated by an amber dot (●) on the file tab. If you try to close a tab with unsaved changes, you'll be prompted to confirm. Save is manual only — nothing is auto-saved, so always Ctrl+S before switching away.<br><br>Open from the sidebar to browse all projects, or click <strong>Edit</strong> on any project card to jump directly into that project's files. Use <strong>Ctrl+P</strong> to quick-search files and <strong>Ctrl+W</strong> to close tabs.</span></div>
       <div class="help-page-item"><strong>Files <span class="help-kbd">Ctrl+7</span></strong><span>File browser — navigate the server filesystem, view and edit files, upload and download.</span></div>
       <div class="help-page-item"><strong>Connections <span class="help-kbd">Ctrl+8</span></strong><span>External service connections — GitHub repos, API integrations, and linked accounts.</span></div>
       <div class="help-page-item"><strong>VPS <span class="help-kbd">Ctrl+9</span></strong><span>Manage VPS deploy targets — view remote servers, deploy projects to external infrastructure.</span></div>
-      <div class="help-page-item"><strong>Funnel</strong><span>Analytics and conversion funnel — track visitors, engagement, and project metrics.</span></div>
+      <div class="help-page-item"><strong>Funnel</strong><span>Tailscale Funnel — expose projects publicly through Tailscale's reverse proxy without port forwarding.</span></div>
     </div>`
   },
   {
@@ -6910,6 +7074,25 @@ async function saveCurrentFile() {
     toast("Saved " + tab.name, "success");
   } catch (err) {
     toast("Save failed: " + err.message, "error");
+  }
+}
+
+function editorSaveFile() { saveCurrentFile(); }
+
+async function editorSaveBuildRestart() {
+  // Determine project name from editor root path
+  const projMatch = (editorRootPath || "").match(/\/projects\/([^/]+)/);
+  if (!projMatch) { toast("Cannot determine project from editor path", "error"); return; }
+  const projName = projMatch[1];
+  try {
+    await saveCurrentFile();
+    toast("Building " + projName + "...", "info");
+    await api(`/api/projects/${projName}/build`, { method: "POST" });
+    toast("Restarting " + projName + "...", "info");
+    await api(`/api/projects/${projName}/restart`, { method: "POST" });
+    toast(projName + " saved, built, and restarted!", "success");
+  } catch (err) {
+    toast("Failed: " + err.message, "error");
   }
 }
 

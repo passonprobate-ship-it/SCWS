@@ -46,18 +46,21 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 **Source code** (development, not on Pi):
 ```
 SPAWN/
-├── shared/schema.ts     ← Drizzle ORM schema (5 tables)
+├── shared/schema.ts     ← Drizzle ORM schema (8 tables)
 ├── daemon/
-│   ├── index.ts         ← Express app, REST routes, auth, dashboard
+│   ├── index.ts         ← Express app, REST routes, auth, dashboard, watchdog
 │   ├── storage.ts       ← IStorage + DatabaseStorage (all DB queries)
 │   ├── projects.ts      ← Project lifecycle (create, start, stop, build, delete)
 │   ├── nginx.ts         ← nginx config generation + reload (uses sudo)
 │   ├── pm2.ts           ← PM2 process management
-│   ├── claude.ts        ← That's how you get spawned (headless CLI wrapper)
+│   ├── claude.ts        ← Claude CLI wrapper (headless, streaming, abort)
 │   ├── terminal.ts      ← Web terminal (xterm.js + node-pty + WebSocket)
 │   ├── github.ts        ← gh CLI operations
 │   ├── deploy.ts        ← Build + SCP to production servers
-│   └── dashboard.html   ← Single-file SPA (vanilla JS, no framework)
+│   ├── notifications.ts ← Multi-channel notifications (Telegram, email, webhook, WhatsApp)
+│   ├── network.ts       ← WiFi scanning, netplan config, Tailscale Funnel
+│   ├── onboarding.ts    ← First-run wizard
+│   └── dashboard.html   ← Single-file SPA (vanilla JS, 7200+ lines, 15+ pages)
 └── script/build.ts      ← esbuild bundler
 ```
 
@@ -83,6 +86,9 @@ PostgreSQL user `scws`, database `scws_daemon`.
 | `activity_log` | All actions (created, built, deployed, started, stopped) |
 | `daemon_config` | Key-value daemon settings |
 | `spawn_memories` | Persistent key-value memory for MCP server |
+| `channels` | Notification channels (Telegram, email, webhook, WhatsApp) |
+| `connections` | External service connections (VPS, MCP servers) |
+| `notifications` | Notification history and delivery status |
 
 Connection: `postgresql://scws:<password>@localhost:5432/scws_daemon`
 
