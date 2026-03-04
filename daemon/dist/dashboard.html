@@ -1638,8 +1638,10 @@ async function loadSetupPage() {
   try {
     const ob = await api("/api/onboard/status");
     const badge = document.getElementById("nav-setup-badge");
+    const setupNav = document.querySelector('.nav-item[data-page="setup"]');
     if (ob.status === "complete") {
       if (badge) badge.style.display = "none";
+      if (setupNav) setupNav.style.display = "none";
     } else if (badge) {
       badge.textContent = ob.requiredComplete + "/" + ob.requiredTotal;
       badge.style.display = "inline-block";
@@ -1724,13 +1726,16 @@ ${cmdBlock('bash /var/www/scws/onboard.sh --step 5')}`
 function initApp() {
   updateStatusBar();
   setInterval(updateStatusBar, 15000);
-  // Check onboarding status — redirect to setup if incomplete
+  // Check onboarding status — redirect to setup if incomplete, hide setup nav if complete
   api("/api/onboard/status").then(ob => {
+    const setupNav = document.querySelector('.nav-item[data-page="setup"]');
     if (ob.status !== "complete") {
       navigate("setup");
       const badge = document.getElementById("nav-setup-badge");
       if (badge) { badge.textContent = ob.requiredComplete + "/" + ob.requiredTotal; badge.style.display = "inline-block"; }
+      if (setupNav) setupNav.style.display = "";
     } else {
+      if (setupNav) setupNav.style.display = "none";
       navigate("help");
     }
   }).catch(() => { navigate("help"); });
@@ -4274,16 +4279,28 @@ function updateNetworkIndicators() {
   if (!networkStatus) return;
   const ns = networkStatus;
 
+  // Detect VPS: internet reachable but no real eth0/wlan0 (virtual NIC has different name)
+  const hasWlan = ns.wlan0?.up && ns.wlan0?.wpa_state;
+  const isVps = ns.internet && !ns.eth0?.up && !hasWlan;
+
   function setDot(id, up) {
     const dot = document.getElementById(id);
     if (!dot) return;
     dot.className = "net-dot " + (up ? "up" : "down");
   }
 
-  setDot("net-eth0-dot", ns.eth0?.up);
+  setDot("net-eth0-dot", ns.eth0?.up || isVps);
   setDot("net-wlan0-dot", ns.wlan0?.up && ns.wlan0?.wpa_state === "COMPLETED");
-  setDot("sb-eth0-dot", ns.eth0?.up);
+  setDot("sb-eth0-dot", ns.eth0?.up || isVps);
   setDot("sb-wlan0-dot", ns.wlan0?.up && ns.wlan0?.wpa_state === "COMPLETED");
+
+  // Hide wlan indicators on VPS (no WiFi hardware)
+  if (isVps) {
+    const wlanSystem = document.querySelector('#net-wlan0-dot')?.closest('.net-indicator');
+    if (wlanSystem) wlanSystem.style.display = 'none';
+    const wlanSb = document.getElementById('sb-wlan0-dot')?.parentElement;
+    if (wlanSb) wlanSb.style.display = 'none';
+  }
 }
 
 function showNetPopover(iface) {
