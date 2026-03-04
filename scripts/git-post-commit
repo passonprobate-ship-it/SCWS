@@ -3,7 +3,9 @@
 # Installed in all SPAWN-managed repos
 
 DAEMON_URL="http://127.0.0.1:4000"
-TOKEN="b3089956e81b8b8c11979d66b8e31776178f67d79da18a5670374810433d2ad1"
+TOKEN=$(grep '^DASHBOARD_TOKEN=' /var/www/scws/daemon/.env 2>/dev/null | cut -d= -f2)
+
+if [ -z "$TOKEN" ]; then exit 0; fi
 
 # Get commit info
 HASH=$(git rev-parse --short HEAD 2>/dev/null)

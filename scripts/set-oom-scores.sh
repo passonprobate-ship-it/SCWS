@@ -30,17 +30,7 @@ set_oom "scws-daemon" -500
 set_oom "spawn-mcp" -300
 
 # Projects — expendable (auto-restart via PM2)
-for proj in $(pm2 jlist 2>/dev/null | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for p in data:
-        name = p.get('name', '')
-        status = p.get('pm2_env', {}).get('status', '')
-        if name not in ('scws-daemon', 'spawn-mcp', 'pm2-logrotate') and status == 'online':
-            print(name)
-except: pass
-" 2>/dev/null); do
+for proj in $(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name != "scws-daemon" and .name != "spawn-mcp" and .name != "pm2-logrotate" and .pm2_env.status == "online") | .name' 2>/dev/null || true); do
   set_oom "$proj" 300
 done
 

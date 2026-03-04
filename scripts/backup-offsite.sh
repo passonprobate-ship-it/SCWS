@@ -8,9 +8,21 @@ set -euo pipefail
 export PATH="/usr/bin:/usr/local/bin:$PATH"
 export HOME="/home/codeman"
 
-MCP_BACKUP_TOKEN="f00fb26d3289ccbfb295c457817bc87613891dade31ea660f980ac6ae1a59a1e"
+# Source token from daemon env instead of hardcoding
+OFFSITE_TOKEN_FILE="/var/www/scws/scripts/.backup-token"
+if [ -f "$OFFSITE_TOKEN_FILE" ]; then
+    MCP_BACKUP_TOKEN=$(cat "$OFFSITE_TOKEN_FILE")
+else
+    echo "[$(date)] ERROR: Missing backup token file at $OFFSITE_TOKEN_FILE" >&2
+    exit 1
+fi
+
 MCP_BACKUP_URL="https://passoncloud.duckdns.org/api/backups"
 BACKUP_DIR="/var/www/scws/backups"
+
+# Cleanup temp files on any exit
+cleanup() { rm -f /tmp/spawn-backup-*.json /tmp/spawn-b64-*.txt; }
+trap cleanup EXIT
 
 upload_backup() {
     local name="$1" file="$2" retention="${3:-7}"
@@ -26,13 +38,10 @@ upload_backup() {
     fi
 
     # Build JSON payload via temp file to avoid argument-list-too-long for large files
-    local tmpfile
+    local tmpfile b64file
     tmpfile=$(mktemp /tmp/spawn-backup-XXXXXX.json)
-    trap "rm -f '$tmpfile'" RETURN
-
-    # Write JSON with base64 data using jq --rawfile to avoid shell arg limits
-    local b64file
     b64file=$(mktemp /tmp/spawn-b64-XXXXXX.txt)
+
     base64 -w0 "$file" > "$b64file"
 
     jq -cn \
@@ -46,22 +55,22 @@ upload_backup() {
     rm -f "$b64file"
 
     local response
-    response=$(curl -sf --max-time 120 -X POST "$MCP_BACKUP_URL" \
+    if response=$(curl -sf --max-time 120 -X POST "$MCP_BACKUP_URL" \
         -H "Authorization: Bearer $MCP_BACKUP_TOKEN" \
         -H "Content-Type: application/json" \
-        -d @"$tmpfile")
+        -d @"$tmpfile"); then
+        rm -f "$tmpfile"
+        if echo "$response" | jq -e '.id' > /dev/null 2>&1; then
+            local remote_size
+            remote_size=$(echo "$response" | jq -r '.sizeBytes')
+            echo "[$(date)] Uploaded: $orig ($remote_size bytes) → $name"
+            return 0
+        fi
+    fi
 
     rm -f "$tmpfile"
-
-    if [ $? -eq 0 ] && echo "$response" | jq -e '.id' > /dev/null 2>&1; then
-        local remote_size
-        remote_size=$(echo "$response" | jq -r '.sizeBytes')
-        echo "[$(date)] Uploaded: $orig ($remote_size bytes) → $name"
-        return 0
-    else
-        echo "[$(date)] FAILED: $orig → $name" >&2
-        return 1
-    fi
+    echo "[$(date)] FAILED: $orig → $name" >&2
+    return 1
 }
 
 # Find the most recent backup of each type by modification time
