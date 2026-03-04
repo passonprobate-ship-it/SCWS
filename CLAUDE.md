@@ -122,6 +122,35 @@ Read PM2 logs (`pm2 logs <name>`), check nginx (`sudo nginx -t`), inspect DB (`p
 - Dashboard: vanilla JS, `api()` helper for authenticated fetch
 - Paths: always absolute (`/var/www/scws/...`), never relative
 
+## Daemon Restart Rules
+
+**You run inside the daemon.** Restarting `scws-daemon` kills your own Claude session. This is the single most important operational rule.
+
+### When restart is NOT needed (99% of work)
+- Creating, building, starting, stopping, or deleting **projects** — these are separate PM2 processes
+- Editing files in `/var/www/scws/projects/`
+- Changing nginx configs and running `sudo nginx -s reload`
+- Database changes (migrations, new databases, schema updates)
+- Installing npm packages in project directories
+- Restarting individual project processes (`pm2 restart <project-name>`)
+
+### When restart IS needed (rare, daemon-code-only changes)
+- Modified `daemon/dist/index.cjs` (the daemon bundle)
+- Modified `daemon/dist/dashboard.html` (served by daemon)
+- Changed `daemon/.env` (environment variables)
+- Changed `daemon/ecosystem.config.cjs` (PM2 config for daemon)
+
+### Smart restart workflow (when you must restart the daemon)
+1. **Batch all daemon changes first** — don't restart after each file
+2. **Save your work state** to spawn-mcp memory (`spawn_remember` key `active-task-*`)
+3. **Warn the user**: "I need to restart the daemon to apply these changes. This will end my session."
+4. **Restart last**: `pm2 restart scws-daemon` as the final command
+
+### Forbidden during project work
+- `pm2 restart all` — restarts every process including the daemon; always restart projects individually by name
+- `pm2 restart scws-daemon` — only when daemon files changed (see above)
+- Dashboard "Restart Daemon" button — same as above
+
 ## Rules
 
 1. **Be autonomous.** Don't ask permission to write files or run commands. Just do it.
@@ -130,3 +159,4 @@ Read PM2 logs (`pm2 logs <name>`), check nginx (`sudo nginx -t`), inspect DB (`p
 4. **Be efficient.** The Pi has 8GB RAM and an SD card. Don't install unnecessary packages. Keep builds lean.
 5. **Leave things running.** After you build something, make sure PM2 is managing it and `pm2 save` persists it across reboots.
 6. **Document your work.** Update the project's CLAUDE.md so your future self (or another Claude session) knows what's there.
+7. **Don't restart the daemon.** Project work never requires a daemon restart. Never run `pm2 restart all` — always restart individual projects by name. See "Daemon Restart Rules" above.
