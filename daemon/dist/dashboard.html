@@ -4899,6 +4899,7 @@ const HELP_TOPICS = [
       <div class="help-page-item"><strong>MCP <span class="help-kbd">Ctrl+4</span></strong><span>MCP (Model Context Protocol) server status and memory management. Browse, create, and delete persistent memories.</span></div>
       <div class="help-page-item"><strong>Channels <span class="help-kbd">Ctrl+5</span></strong><span>Notification channels — configure email, webhook, and other alert destinations for system events.</span></div>
       <div class="help-page-item"><strong>Cortex <span class="help-kbd">Ctrl+6</span></strong><span>Scheduler and automation — cron jobs, webhook ingress endpoints, and the Cortex orchestration engine.</span></div>
+      <div class="help-page-item"><strong>Editor</strong><span>Full code editor powered by Monaco (VS Code engine). Browse all projects in the file tree, open multiple files in tabs, edit with syntax highlighting, and save with Ctrl+S. Open from the sidebar to see all projects, or click Edit on a project card to jump directly to that project's files.</span></div>
       <div class="help-page-item"><strong>Files <span class="help-kbd">Ctrl+7</span></strong><span>File browser — navigate the server filesystem, view and edit files, upload and download.</span></div>
       <div class="help-page-item"><strong>Connections <span class="help-kbd">Ctrl+8</span></strong><span>External service connections — GitHub repos, API integrations, and linked accounts.</span></div>
       <div class="help-page-item"><strong>VPS <span class="help-kbd">Ctrl+9</span></strong><span>Manage VPS deploy targets — view remote servers, deploy projects to external infrastructure.</span></div>
@@ -4923,6 +4924,12 @@ const HELP_TOPICS = [
       <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">9</span></td><td>Go to VPS</td></tr>
       <tr><td><span class="help-kbd">?</span></td><td>Go to Help</td></tr>
       <tr><td><span class="help-kbd">Esc</span></td><td>Close modal / command palette</td></tr>
+      <tr><td colspan="2" style="padding:8px 0 4px;color:var(--accent);font-weight:600;">Editor Shortcuts (when on Editor page)</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">S</span></td><td>Save current file</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">P</span></td><td>Quick file finder (search across project)</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">W</span></td><td>Close current tab</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">Tab</span></td><td>Cycle to next tab</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">Shift</span> + <span class="help-kbd">Tab</span></td><td>Cycle to previous tab</td></tr>
     </table>`
   },
   {
@@ -4937,6 +4944,8 @@ const HELP_TOPICS = [
       <p>Click on a project card, then go to the Claude tab and start a session. Claude will work directly in that project's directory.</p>
       <h3>Deploy to a VPS</h3>
       <p>Set up a deploy target on the VPS page (Ctrl+9), then use the Deploy tab on any project to push it to your remote server.</p>
+      <h3>Edit project code</h3>
+      <p>Click <strong>Editor</strong> in the sidebar to browse all projects, or click the <strong>Edit</strong> button on any project card. The editor supports multi-tab editing, syntax highlighting for 50+ languages, and Ctrl+P to quickly find files. Changes are saved manually with Ctrl+S.</p>
       <h3>Set up notifications</h3>
       <p>Go to Channels (Ctrl+5) to configure email or webhook notifications for build completions, errors, and other events.</p>
     </div>`
@@ -6711,9 +6720,10 @@ async function initEditorPage(projectName) {
   if (projectName) {
     editorRootPath = "/var/www/scws/projects/" + projectName;
     document.getElementById("editor-project-name").textContent = projectName;
-  } else if (editorRootPath === "/var/www/scws/projects" && editorTabs.length === 0) {
-    // No specific project — try to pick from loaded projects
-    document.getElementById("editor-project-name").textContent = "Projects";
+  } else {
+    // No specific project — show all projects
+    editorRootPath = "/var/www/scws/projects";
+    document.getElementById("editor-project-name").textContent = "PROJECTS";
   }
   await initMonaco();
   setupResizeHandle();
@@ -6727,7 +6737,11 @@ async function initEditorPage(projectName) {
 async function loadTreeNode(dirPath) {
   try {
     const resp = await api("/api/files/list?path=" + encodeURIComponent(dirPath));
-    const entries = (resp.entries || resp).filter(e => {
+    const raw = resp.items || resp.entries || (Array.isArray(resp) ? resp : []);
+    const entries = raw.map(e => ({
+      ...e,
+      isDirectory: e.isDirectory !== undefined ? e.isDirectory : e.isDir
+    })).filter(e => {
       if (!editorShowHidden && EDITOR_HIDDEN_DIRS.has(e.name)) return false;
       return true;
     }).sort((a, b) => {
