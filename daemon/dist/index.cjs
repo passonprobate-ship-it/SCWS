@@ -742,6 +742,11 @@ export default nextConfig;
     const filePath = safePath(t.query.path);
     const stat = await fsp.stat(filePath);
     if (stat.isDirectory()) { e.status(400).json({ error: "Cannot download a directory" }); return; }
+    if (t.query.format === "text") {
+      const content = await fsp.readFile(filePath, "utf8");
+      e.json({ path: filePath, content, size: stat.size, modified: stat.mtime.toISOString() });
+      return;
+    }
     e.setHeader("Content-Type", "application/octet-stream");
     e.setHeader("Content-Disposition", "attachment; filename=\"" + path.basename(filePath) + "\"");
     e.setHeader("Content-Length", stat.size);
@@ -816,6 +821,16 @@ export default nextConfig;
     await fsp.rename(src, dest);
     w.logActivity({ action: "file_renamed", details: "Renamed: " + t.body.from + " → " + t.body.to }).catch(() => {});
     e.json({ ok: true, from: src, to: dest });
+  }));
+
+  $.post("/api/files/write", D("Write file", async (t, e) => {
+    const { path: fp, content } = t.body;
+    if (!fp || content === undefined) { e.status(400).json({ error: "path and content required" }); return; }
+    const resolved = safePath(fp);
+    await fsp.mkdir(path.dirname(resolved), { recursive: true });
+    await fsp.writeFile(resolved, content, "utf8");
+    w.logActivity({ action: "file_written", details: "Wrote: " + fp + " (" + Buffer.byteLength(content, "utf8") + " bytes)" }).catch(() => {});
+    e.json({ ok: true, path: resolved, size: Buffer.byteLength(content, "utf8") });
   }));
 
   // ── VULTR VPS PROXY ROUTES ──
