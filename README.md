@@ -117,7 +117,11 @@ If something breaks, it reads the logs, diagnoses the issue, fixes it, and redep
 
 ## Dashboard
 
-![SPAWN Dashboard](https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/docs/screenshot-dashboard.png)
+![SPAWN Help Center](https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/docs/screenshot-help.png)
+
+![SPAWN System Monitor](https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/docs/screenshot-system.png)
+
+![SPAWN Claude Sessions](https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/docs/screenshot-sessions.png)
 
 The web dashboard is a single-file SPA at `http://<host>/` providing full control over the system.
 
