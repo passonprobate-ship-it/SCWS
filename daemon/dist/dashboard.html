@@ -1833,8 +1833,8 @@ async function loadSetupPage() {
       "daemon": "The daemon is running. No action needed.",
       "claude-cli": `<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:12px;">
 <strong style="color:var(--yellow);">&#x26A0; Requires a Claude account</strong>
-<p style="margin:6px 0 0;font-size:12px;color:var(--text-dim);line-height:1.5;">SPAWN needs Claude Code to run AI sessions. You need a <strong style="color:var(--text);">Claude Max subscription</strong> ($100/mo) or an <strong style="color:var(--text);">Anthropic API key</strong>.</p>
-<p style="margin:6px 0 0;font-size:12px;"><a href="https://claude.ai/pricing" target="_blank" style="color:var(--accent);">Get Claude Max &rarr;</a> &nbsp;|&nbsp; <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent);">Get an API key &rarr;</a></p>
+<p style="margin:6px 0 0;font-size:12px;color:var(--text-dim);line-height:1.5;">SPAWN needs Claude Code to run AI sessions. Any <a href="https://claude.ai" target="_blank" style="color:var(--accent);">claude.ai</a> account works to get started (even free), but usage is very limited on lower tiers. For real work, <strong style="color:var(--text);">Claude Max</strong> ($100/mo) is recommended for unlimited use.</p>
+<p style="margin:6px 0 0;font-size:12px;"><a href="https://claude.ai/pricing" target="_blank" style="color:var(--accent);">See plans &rarr;</a> &nbsp;|&nbsp; <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent);">Or use an API key &rarr;</a></p>
 </div>
 <strong>Install Claude Code CLI on this server:</strong>
 ${cmdBlock('curl -fsSL https://claude.ai/install.sh | sh')}
