@@ -10,7 +10,7 @@ One machine. One install. Unlimited projects. From a $60 Raspberry Pi on your de
 
 ### Requires Claude Max
 
-SPAWN is powered by Claude Code CLI, which requires an active **[Claude Max subscription](https://claude.com/pricing)** ($100/month from Anthropic). This is what gives SPAWN its brain — without it, there's no AI. If you don't have one yet, **[go sign up now](https://claude.com/pricing)** before continuing. Once subscribed, the install script handles the rest.
+SPAWN is powered by Claude Code CLI, which requires an active **<a href="https://claude.com/pricing" target="_blank">Claude Max subscription</a>** ($100/month from Anthropic). This is what gives SPAWN its brain — without it, there's no AI. If you don't have one yet, **<a href="https://claude.com/pricing" target="_blank">go sign up now</a>** before continuing. Once subscribed, the install script handles the rest.
 
 ---
 
@@ -56,7 +56,7 @@ sudo -u spawn bash /var/www/scws/projects/spawn-vps/onboard.sh
 
 ## Recommended VPS: Vultr
 
-We recommend **[Vultr](https://www.vultr.com/?ref=9876074-9J)** as the preferred cloud provider for SPAWN deployments.
+We recommend **<a href="https://www.vultr.com/?ref=9876074-9J" target="_blank">Vultr</a>** as the preferred cloud provider for SPAWN deployments.
 
 ### Why Vultr?
 
@@ -70,8 +70,8 @@ We recommend **[Vultr](https://www.vultr.com/?ref=9876074-9J)** as the preferred
 
 | Plan | Deal | Link |
 |------|------|------|
-| **New users** (< $100/mo) | Start with Vultr — great pricing, no commitment | [**Sign up with Vultr**](https://www.vultr.com/?ref=6816669) |
-| **Power users** ($100+/mo) | Get **$300 free credit** to test the platform* | [**Claim $300 Credit**](https://www.vultr.com/?ref=9876074-9J) |
+| **New users** (< $100/mo) | Start with Vultr — great pricing, no commitment | <a href="https://www.vultr.com/?ref=6816669" target="_blank"><b>Sign up with Vultr</b></a> |
+| **Power users** ($100+/mo) | Get **$300 free credit** to test the platform* | <a href="https://www.vultr.com/?ref=9876074-9J" target="_blank"><b>Claim $300 Credit</b></a> |
 
 > *$300 credit requires a valid credit card or PayPal. Unused credit expires after 30 days. Referred users must be active 30+ days and use at least $100 in payments.
 
