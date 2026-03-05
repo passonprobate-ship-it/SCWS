@@ -6,6 +6,14 @@ It manages its own infrastructure. It monitors its own health. It fixes its own 
 
 One machine. One install. Unlimited projects. From a $60 Raspberry Pi on your desk to a $5/mo cloud VPS — SPAWN turns commodity hardware into your personal autonomous software factory.
 
+---
+
+### Requires Claude Max
+
+SPAWN is powered by Claude Code CLI, which requires an active **[Claude Max subscription](https://claude.ai/pricing)** ($100/month from Anthropic). This is what gives SPAWN its brain — without it, there's no AI. If you don't have one yet, **[go sign up now](https://claude.ai/pricing)** before continuing. Once subscribed, the install script handles the rest.
+
+---
+
 ## Quick Install
 
 Deploy SPAWN on any fresh Ubuntu server (20.04/22.04/24.04, amd64 or arm64) with one command:
