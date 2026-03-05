@@ -458,8 +458,9 @@
     .notif-item:last-child { border-bottom: none; }
     .rules-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
     .rules-row:last-child { border-bottom: none; }
-    #page-cortex.active { display: flex !important; flex-direction: column; height: 100%; }
-    #cortex-iframe { flex: 1; min-height: 0; }
+    #page-cortex .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    #page-cortex .btn-danger { border-color: var(--red); color: var(--red); }
+    #page-cortex .btn-danger:hover { background: var(--red); color: white; }
 
     /* ── Files Page ─────────────────────────────── */
     .files-dual {
@@ -1323,23 +1324,22 @@
     </div>
 
     <!-- Cortex Page -->
-    <div id="page-cortex" class="page" style="padding:0;">
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border);">
-        <div class="page-title" style="margin:0;">Cortex</div>
+    <div id="page-cortex" class="page">
+      <div class="flex-between">
+        <div class="page-title">Cortex</div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <span style="font-size:11px; color:var(--text-dim);">System monitoring · Scheduler · Webhooks</span>
+          <span id="cortex-status-badge" style="font-size:11px; padding:3px 10px; border-radius:10px; font-weight:600;"></span>
           <button class="btn btn-sm" id="cortex-open-btn" onclick="window.open('/spawn-cortex/', '_blank')" style="display:none;">Open in Tab</button>
-          <button class="btn btn-sm" onclick="reloadCortexFrame()">Reload</button>
         </div>
       </div>
-      <div id="cortex-explainer" style="display:none; padding:40px 24px; max-width:640px; margin:0 auto;">
+      <div style="padding:24px 0; max-width:640px; margin:0 auto;">
         <div style="text-align:center; margin-bottom:32px;">
           <div style="font-size:48px; margin-bottom:12px;">&#x1F9E0;</div>
           <h2 style="margin:0 0 8px; font-size:20px; color:var(--text);">Cortex — Automation Engine</h2>
-          <p style="color:var(--text-dim); margin:0; font-size:13px;">Not installed on this node</p>
+          <p id="cortex-status-text" style="color:var(--text-dim); margin:0; font-size:13px;"></p>
         </div>
         <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:20px;">
-          <p style="margin:0 0 12px; color:var(--text); font-size:13px;">Cortex is SPAWN's optional automation layer. It adds:</p>
+          <p style="margin:0 0 12px; color:var(--text); font-size:13px;">Cortex is SPAWN's automation layer. It provides:</p>
           <div style="display:grid; gap:12px;">
             <div style="display:flex; gap:10px; align-items:flex-start;">
               <span style="font-size:18px;">&#x23F0;</span>
@@ -1353,15 +1353,16 @@
               <span style="font-size:18px;">&#x1F514;</span>
               <div><strong style="color:var(--text); font-size:13px;">Notifications</strong><br><span style="color:var(--text-dim); font-size:12px;">Send alerts via email, Telegram, or webhooks when jobs run, builds fail, or thresholds are hit.</span></div>
             </div>
+            <div style="display:flex; gap:10px; align-items:flex-start;">
+              <span style="font-size:18px;">&#x1F4CA;</span>
+              <div><strong style="color:var(--text); font-size:13px;">System Monitoring</strong><br><span style="color:var(--text-dim); font-size:12px;">CPU, memory, disk, and temperature monitoring with historical data and threshold alerts.</span></div>
+            </div>
           </div>
         </div>
-        <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:16px;">
-          <p style="margin:0 0 8px; color:var(--text); font-size:13px; font-weight:600;">Install Cortex</p>
-          <p style="margin:0 0 8px; color:var(--text-dim); font-size:12px;">Ask Claude to set it up, or deploy manually:</p>
-          <code style="display:block; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:10px; font-size:12px; color:var(--text-dim); white-space:pre; overflow-x:auto;">claude "Install spawn-cortex on this node"</code>
+        <div style="text-align:center;">
+          <button class="btn" id="cortex-toggle-btn" onclick="toggleCortex()" style="padding:10px 32px; font-size:14px;"></button>
         </div>
       </div>
-      <iframe id="cortex-iframe" src="" style="width:100%; border:none; background:var(--bg);" allowfullscreen></iframe>
     </div>
 
     <!-- Files Page -->
@@ -6079,41 +6080,68 @@ function showVpsDeployModal(instanceId, ip) {
   });
 }
 
-// ── Cortex Iframe ───────────────────────────────────────────────
-let cortexLoaded = false;
-let cortexAvailable = null;
-
-async function checkCortexAvailable() {
-  try {
-    const r = await fetch("/spawn-cortex/", { method: "HEAD", signal: AbortSignal.timeout(3000) });
-    return r.ok || r.status === 401 || r.status === 302;
-  } catch { return false; }
-}
+// ── Cortex Management ───────────────────────────────────────────
+let cortexStatus = null;
 
 async function loadCortexPage() {
-  const iframe = document.getElementById("cortex-iframe");
-  const explainer = document.getElementById("cortex-explainer");
+  const badge = document.getElementById("cortex-status-badge");
+  const statusText = document.getElementById("cortex-status-text");
+  const toggleBtn = document.getElementById("cortex-toggle-btn");
   const openBtn = document.getElementById("cortex-open-btn");
-  if (cortexAvailable === null) cortexAvailable = await checkCortexAvailable();
-  if (cortexAvailable) {
-    explainer.style.display = "none";
-    iframe.style.display = "";
-    openBtn.style.display = "";
-    if (!cortexLoaded) {
-      iframe.src = "/spawn-cortex/?token=" + encodeURIComponent(token);
-      cortexLoaded = true;
+  try {
+    const projects = await api("/api/projects");
+    const cortex = projects.find(p => p.name === "spawn-cortex");
+    if (!cortex) {
+      cortexStatus = "not-installed";
+      badge.textContent = "Not Installed";
+      badge.style.background = "var(--bg-secondary)";
+      badge.style.color = "var(--text-dim)";
+      statusText.textContent = "Not installed on this node";
+      toggleBtn.textContent = "Install Cortex";
+      toggleBtn.className = "btn";
+      toggleBtn.disabled = true;
+      openBtn.style.display = "none";
+      return;
     }
-  } else {
-    iframe.style.display = "none";
+    const isRunning = cortex.status === "running";
+    cortexStatus = isRunning ? "running" : "stopped";
+    badge.textContent = isRunning ? "Running" : "Stopped";
+    badge.style.background = isRunning ? "#22c55e22" : "#ef444422";
+    badge.style.color = isRunning ? "var(--green)" : "var(--red)";
+    statusText.textContent = isRunning
+      ? "Cortex is running on port " + (cortex.port || 5002)
+      : "Cortex is stopped";
+    toggleBtn.textContent = isRunning ? "Stop Cortex" : "Start Cortex";
+    toggleBtn.className = isRunning ? "btn btn-danger" : "btn btn-primary";
+    toggleBtn.disabled = false;
+    openBtn.style.display = isRunning ? "" : "none";
+  } catch {
+    badge.textContent = "Unknown";
+    badge.style.background = "var(--bg-secondary)";
+    badge.style.color = "var(--text-dim)";
+    statusText.textContent = "Could not determine Cortex status";
+    toggleBtn.textContent = "Refresh";
+    toggleBtn.className = "btn";
+    toggleBtn.disabled = false;
     openBtn.style.display = "none";
-    explainer.style.display = "block";
   }
 }
 
-async function reloadCortexFrame() {
-  cortexAvailable = null;
-  cortexLoaded = false;
-  await loadCortexPage();
+async function toggleCortex() {
+  const toggleBtn = document.getElementById("cortex-toggle-btn");
+  const prev = toggleBtn.textContent;
+  toggleBtn.disabled = true;
+  toggleBtn.textContent = cortexStatus === "running" ? "Stopping..." : "Starting...";
+  try {
+    const action = cortexStatus === "running" ? "stop" : "start";
+    await api(`/api/projects/spawn-cortex/${action}`, { method: "POST" });
+    await new Promise(r => setTimeout(r, 1500));
+    await loadCortexPage();
+  } catch (e) {
+    toggleBtn.textContent = prev;
+    toggleBtn.disabled = false;
+    showToast("Failed: " + (e.message || e), "error");
+  }
 }
 
 // ── Channels Management ─────────────────────────────────────────
