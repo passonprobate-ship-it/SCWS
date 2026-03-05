@@ -202,8 +202,14 @@ step_2_claude_cli() {
       return 1
       ;;
     3)
-      printf "\n  ${CYAN}Installing OpenCode...${RESET}\n"
-      printf "  ${DIM}Open-source AI coding agent — reads CLAUDE.md natively, supports 75+ providers${RESET}\n\n"
+      printf "\n  ${BOLD}About OpenCode vs Claude Code:${RESET}\n"
+      printf "  ${DIM}OpenCode is open-source and supports 75+ LLM providers including Claude.${RESET}\n"
+      printf "  ${DIM}However, Claude Code with a Max subscription (\$100/mo) is the best value${RESET}\n"
+      printf "  ${DIM}for serious SPAWN use — heavy sessions can burn \$50+ in API credits per${RESET}\n"
+      printf "  ${DIM}day, while Max gives unlimited use at a flat rate.${RESET}\n"
+      printf "  ${DIM}OpenCode's free \"Big Pickle\" model is decent for lighter tasks if you${RESET}\n"
+      printf "  ${DIM}want to try SPAWN without any cost.${RESET}\n\n"
+      printf "  ${CYAN}Installing OpenCode...${RESET}\n\n"
       if curl -fsSL https://opencode.ai/install | bash; then
         export PATH="$HOME/.local/bin:$PATH"
         if command -v opencode &>/dev/null; then

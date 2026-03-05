@@ -12,7 +12,20 @@ One machine. One install. Unlimited projects. From a $60 Raspberry Pi on your de
 
 SPAWN is powered by Claude Code CLI. Any **<a href="https://claude.ai" target="_blank">claude.ai</a>** account works to get started — even the free tier — so you can try it out without paying anything. However, free and Pro tiers have very limited Claude Code usage. For real work, **<a href="https://claude.ai/pricing" target="_blank">Claude Max</a>** ($100/month) is recommended for unlimited use. You can also use an **<a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic API key</a>** instead.
 
-**Alternative: <a href="https://opencode.ai" target="_blank">OpenCode</a>** — an open-source AI coding agent that reads `CLAUDE.md` natively (Claude Code compatibility mode). Supports Claude Max, Anthropic API keys, and 75+ other LLM providers. Install with: `curl -fsSL https://opencode.ai/install | bash`
+#### Alternative: OpenCode
+
+**<a href="https://opencode.ai" target="_blank">OpenCode</a>** is an open-source AI coding agent that reads `CLAUDE.md` natively (Claude Code compatibility mode). It supports Claude via API key, plus 75+ other LLM providers. Install with: `curl -fsSL https://opencode.ai/install | bash`
+
+**Which should you use?**
+
+| | Claude Code CLI | OpenCode |
+|---|---|---|
+| **Best for** | Daily SPAWN use — building, deploying, fixing | Trying SPAWN, experimenting with other models |
+| **Cost model** | Flat subscription ($100/mo Max = unlimited) | Per-API-call (tokens add up fast under heavy use) |
+| **AI quality** | Claude only — the gold standard for coding agents | 75+ models — quality varies widely by provider |
+| **SPAWN compat** | Native — SPAWN was built for it | Reads CLAUDE.md, supports MCP servers |
+
+**Bottom line**: Claude Code with a Max subscription is the best value for serious SPAWN use. A single complex project can burn through $50+ in API credits in a day — Max gives you unlimited sessions for a flat rate. If you're just exploring or want to try SPAWN before committing, OpenCode's free "Big Pickle" model is surprisingly capable (not Claude-level, but solid for lighter tasks) and costs nothing to get started.
 
 ---
 
