@@ -1,8 +1,10 @@
 # SPAWN — Self-Programming Autonomous Web Node
 
-An autonomous server that programs itself. Give it a prompt, and it writes the code, installs dependencies, configures the database, sets up the reverse proxy, starts the process, and makes it live — all by itself. Powered by Claude AI.
+A server with a brain. SPAWN turns any Ubuntu machine into an autonomous development environment powered by Claude AI. Describe what you want in plain English — a REST API, a dashboard, a bot, a full-stack app — and SPAWN writes the code, installs dependencies, creates the database, configures the reverse proxy, starts the process, and makes it live at a real URL. No deploying. No DevOps. No manual steps. Just ideas in, running software out.
 
-Runs on any Ubuntu server — from a Raspberry Pi to a cloud VPS.
+It manages its own infrastructure. It monitors its own health. It fixes its own bugs. It remembers what it built and picks up where it left off. You talk to it through a sleek dark-mode dashboard with a built-in terminal, live Claude sessions, file editor, and one-click deploys to external servers. Every project it creates is production-ready and running in seconds.
+
+One machine. One install. Unlimited projects. From a $60 Raspberry Pi on your desk to a $5/mo cloud VPS — SPAWN turns commodity hardware into your personal autonomous software factory.
 
 ## Quick Install
 
