@@ -1794,6 +1794,47 @@ if (token) {
   });
 }
 
+// ── Global helpers for Setup page (must be global for inline onclick) ────
+function copyToClipboard(text, btn) {
+  function onSuccess() { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
+  function fallback() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); onSuccess(); } catch(e) { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+
+function runInTerminal(cmd) {
+  // Navigate to terminal page
+  navigate('claude');
+  // Show the "Back to Setup" button
+  const backBtn = document.getElementById('term-back-setup-btn');
+  if (backBtn) backBtn.style.display = '';
+  // Wait for terminal to connect, then send the command
+  const maxWait = 8000;
+  const start = Date.now();
+  function trySend() {
+    if (typeof termWs !== 'undefined' && termWs && termWs.readyState === WebSocket.OPEN) {
+      termWs.send(JSON.stringify({ type: "input", data: cmd + "\n" }));
+      toast("Command running — click 'Back to Setup' when done", "info", 5000);
+    } else if (Date.now() - start < maxWait) {
+      setTimeout(trySend, 300);
+    } else {
+      toast("Terminal not connected — click Connect in the terminal first, then try again", "error");
+    }
+  }
+  trySend();
+}
+
 async function loadSetupPage() {
   const el = document.getElementById("setup-content");
   el.innerHTML = '<div style="color:var(--text-muted);">Loading onboarding status...</div>';
@@ -1809,44 +1850,6 @@ async function loadSetupPage() {
       badge.style.display = "inline-block";
     }
 
-    function copyToClipboard(text, btn) {
-      function onSuccess() { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
-      function fallback() {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); onSuccess(); } catch(e) { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
-        document.body.removeChild(ta);
-      }
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
-      } else {
-        fallback();
-      }
-    }
-    function runInTerminal(cmd) {
-      // Navigate to terminal page
-      navigate('claude');
-      // Show the "Back to Setup" button
-      const backBtn = document.getElementById('term-back-setup-btn');
-      if (backBtn) backBtn.style.display = '';
-      // Wait for terminal to connect, then send the command
-      const maxWait = 5000;
-      const start = Date.now();
-      function trySend() {
-        if (termWs && termWs.readyState === WebSocket.OPEN) {
-          termWs.send(JSON.stringify({ type: "input", data: cmd + "\n" }));
-          if (typeof toast === 'function') toast("Command running — click 'Back to Setup' when done", "info", 5000);
-        } else if (Date.now() - start < maxWait) {
-          setTimeout(trySend, 200);
-        } else {
-          if (typeof toast === 'function') toast("Terminal not connected — try again", "error");
-        }
-      }
-      trySend();
-    }
     function cmdBlock(cmd) {
       const id = 'cmd-' + Math.random().toString(36).slice(2,8);
       const escaped = cmd.replace(/'/g, "\\'").replace(/"/g, "&quot;");
