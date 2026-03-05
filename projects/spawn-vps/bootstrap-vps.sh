@@ -107,6 +107,9 @@ usermod -aG sudo,adm "$SPAWN_USER" 2>/dev/null || true
 # ── 4. APT repositories ──────────────────────────────────────────────────────
 log "Adding APT repositories (arch=$ARCH)..."
 
+# Detect Ubuntu codename for APT repos
+UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || source /etc/os-release && echo "${VERSION_CODENAME:-noble}")
+
 # NodeSource (Node.js 20.x)
 mkdir -p /usr/share/keyrings
 if [[ ! -f /usr/share/keyrings/nodesource.gpg ]]; then
@@ -133,10 +136,10 @@ echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.
 # Tailscale (conditional)
 if [[ "$ENABLE_TAILSCALE" == "true" ]]; then
   if [[ ! -f /usr/share/keyrings/tailscale-archive-keyring.gpg ]]; then
-    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${UBUNTU_CODENAME}.noarmor.gpg" \
       -o /usr/share/keyrings/tailscale-archive-keyring.gpg
   fi
-  echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main" \
+  echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu ${UBUNTU_CODENAME} main" \
     > /etc/apt/sources.list.d/tailscale.list
 fi
 
@@ -147,7 +150,7 @@ if [[ "$INSTALL_DOCKER" == "true" ]]; then
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
   fi
-  echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+  echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
 fi
 

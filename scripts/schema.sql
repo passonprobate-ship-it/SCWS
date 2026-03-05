@@ -130,3 +130,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_channel ON notifications USING btree (channel_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications USING btree (created_at DESC);
+
+-- ── permissions ───────────────────────────────────────────────────────────
+-- Schema may be applied by postgres superuser; ensure scws role has full access.
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO scws;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO scws;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO scws;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO scws;
