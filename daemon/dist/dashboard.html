@@ -2847,6 +2847,7 @@ async function projectAction(action) {
   try {
     await api(`/api/projects/${currentProject.name}/${action}`, { method: "POST" });
     toast(`${currentProject.name}: ${action} OK`, "success");
+    if (action === "start") window.open("/" + currentProject.name + "/", "_blank");
     loadProjectDetail(currentProject.name);
   } catch (err) {
     toast(`Failed: ${err.message}`, "error");
@@ -2861,6 +2862,7 @@ async function buildAndRestart() {
     await api(`/api/projects/${currentProject.name}/build`, { method: "POST" });
     await api(`/api/projects/${currentProject.name}/start`, { method: "POST" });
     toast("Build & start complete", "success");
+    window.open("/" + currentProject.name + "/", "_blank");
     loadProjectDetail(currentProject.name);
   } catch (err) {
     toast(`Build failed: ${err.message}`, "error");
@@ -2957,6 +2959,7 @@ async function createProject() {
     });
     hideModal("create-modal");
     toast(`Created "${name}"`, "success");
+    window.open("/" + name + "/", "_blank");
     loadProjects();
   } catch (err) {
     toast(`Failed: ${err.message}`, "error");
