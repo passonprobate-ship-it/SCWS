@@ -1808,9 +1808,26 @@ async function loadSetupPage() {
       badge.style.display = "inline-block";
     }
 
+    function copyToClipboard(text, btn) {
+      function onSuccess() { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
+      function fallback() {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); onSuccess(); } catch(e) { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
+        document.body.removeChild(ta);
+      }
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
+      } else {
+        fallback();
+      }
+    }
     function cmdBlock(cmd) {
       const id = 'cmd-' + Math.random().toString(36).slice(2,8);
-      return `<div style="position:relative;"><pre id="${id}" style="background:var(--bg-input);padding:12px 40px 12px 12px;border-radius:6px;margin:8px 0;overflow-x:auto;font-size:13px;">${cmd}</pre><button onclick="navigator.clipboard.writeText(document.getElementById('${id}').textContent.trim());this.textContent='Copied!';setTimeout(()=>this.textContent='&#x1F4CB;',1500);" style="position:absolute;top:12px;right:8px;background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;color:var(--text-dim);" title="Copy to clipboard">&#x1F4CB;</button></div>`;
+      return `<div style="position:relative;"><pre id="${id}" style="background:var(--bg-input);padding:12px 40px 12px 12px;border-radius:6px;margin:8px 0;overflow-x:auto;font-size:13px;">${cmd}</pre><button onclick="copyToClipboard(document.getElementById('${id}').textContent.trim(), this)" style="position:absolute;top:12px;right:8px;background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;color:var(--text-dim);" title="Copy to clipboard">&#x1F4CB;</button></div>`;
     }
     const stepInstructions = {
       "daemon": "The daemon is running. No action needed.",
@@ -6006,7 +6023,7 @@ function renderVpsInstances() {
         ${escapeHtml(label)}
         ${os ? `<span class="vps-os-badge">${escapeHtml(os)}</span>` : ""}
       </div>
-      <div class="vps-ip" onclick="navigator.clipboard.writeText('${escapeHtml(ip)}'); toast('Copied IP', 'success')" title="Click to copy">${escapeHtml(ip)}</div>
+      <div class="vps-ip" onclick="copyToClipboard('${escapeHtml(ip)}', this); toast('Copied IP', 'success')" title="Click to copy">${escapeHtml(ip)}</div>
       <div class="vps-meta">
         <span>${vcpu} vCPU</span> <span>${ram} RAM</span> <span>${disk} SSD</span> <span>${escapeHtml(region)}</span>
         ${bw ? `<span>${bw} BW</span>` : ""}
@@ -6866,7 +6883,9 @@ async function onFunnelProjectChange() {
 
 function copyFunnelUrl() {
   const url = document.getElementById("funnel-url-text").textContent;
-  navigator.clipboard.writeText(url).then(() => toast("URL copied", "success")).catch(() => {});
+  const btn = document.getElementById("funnel-url-display");
+  copyToClipboard(url, btn);
+  toast("URL copied", "success");
 }
 
 // ── Code Editor ─────────────────────────────────────────────────────────
@@ -7355,7 +7374,8 @@ async function ctxDelete() {
 
 function ctxCopyPath() {
   hideContextMenu();
-  navigator.clipboard.writeText(ctxMenuTarget).then(() => toast("Path copied", "success")).catch(() => {});
+  copyToClipboard(ctxMenuTarget, document.body);
+  toast("Path copied", "success");
 }
 
 // ── Resize Handle ──
