@@ -12,6 +12,8 @@ One machine. One install. Unlimited projects. From a $60 Raspberry Pi on your de
 
 SPAWN is powered by Claude Code CLI. Any **<a href="https://claude.ai" target="_blank">claude.ai</a>** account works to get started — even the free tier — so you can try it out without paying anything. However, free and Pro tiers have very limited Claude Code usage. For real work, **<a href="https://claude.ai/pricing" target="_blank">Claude Max</a>** ($100/month) is recommended for unlimited use. You can also use an **<a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic API key</a>** instead.
 
+**Alternative: <a href="https://opencode.ai" target="_blank">OpenCode</a>** — an open-source AI coding agent that reads `CLAUDE.md` natively (Claude Code compatibility mode). Supports Claude Max, Anthropic API keys, and 75+ other LLM providers. Install with: `curl -fsSL https://opencode.ai/install | bash`
+
 ---
 
 ## Quick Install
@@ -161,7 +163,7 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 - **Reverse Proxy**: nginx
 - **Frontend**: Single-file SPA — vanilla JS, no framework
 - **Auth**: Bearer token with timing-safe compare
-- **AI**: Claude Code CLI (headless sessions)
+- **AI**: Claude Code CLI or [OpenCode](https://opencode.ai) (headless sessions)
 - **VCS**: Git + GitHub CLI (`gh`)
 - **Updates**: Auto-update via git polling (every 5 minutes)
 

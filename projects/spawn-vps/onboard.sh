@@ -169,8 +169,9 @@ step_2_claude_cli() {
 
   local choice
   choice=$(prompt_choice "Choose install method:" \
-    "Official installer (recommended)" \
-    "npm global install" \
+    "Claude Code — official installer (recommended)" \
+    "Claude Code — npm global install" \
+    "OpenCode — open-source alternative (opencode.ai)" \
     "Skip for now")
 
   case "$choice" in
@@ -201,6 +202,20 @@ step_2_claude_cli() {
       return 1
       ;;
     3)
+      printf "\n  ${CYAN}Installing OpenCode...${RESET}\n"
+      printf "  ${DIM}Open-source AI coding agent — reads CLAUDE.md natively, supports 75+ providers${RESET}\n\n"
+      if curl -fsSL https://opencode.ai/install | bash; then
+        export PATH="$HOME/.local/bin:$PATH"
+        if command -v opencode &>/dev/null; then
+          success_msg "OpenCode installed successfully"
+          update_state "onboard-claude-cli" "installed"
+          return 0
+        fi
+      fi
+      error_msg "OpenCode installation failed. Try Claude Code (method 1 or 2) instead."
+      return 1
+      ;;
+    4)
       warn_msg "Skipping CLI install. SPAWN won't be able to run AI sessions."
       return 1
       ;;
@@ -336,6 +351,13 @@ step_3_claude_auth() {
       return 1
       ;;
   esac
+
+  # Note for OpenCode users
+  local cli_bin
+  cli_bin=$(detect_claude_cli 2>/dev/null) || true
+  if [[ "$cli_bin" == *opencode* ]]; then
+    printf "\n  ${DIM}Tip: OpenCode users can authenticate via the /connect command inside OpenCode.${RESET}\n"
+  fi
 }
 
 # ============================================================================
@@ -495,6 +517,15 @@ MCPJSON
   if detect_claude_settings >/dev/null 2>&1; then
     success_msg "Claude Code settings configured"
     update_state "onboard-claude-settings" "configured"
+
+    # Hint for OpenCode users
+    local cli_bin
+    cli_bin=$(detect_claude_cli 2>/dev/null) || true
+    if [[ "$cli_bin" == *opencode* ]]; then
+      printf "\n  ${DIM}Note: OpenCode uses opencode.json for MCP config. Copy the spawn MCP server${RESET}\n"
+      printf "  ${DIM}config from ~/.claude/settings.json into opencode.json in your project root.${RESET}\n"
+    fi
+
     return 0
   fi
 

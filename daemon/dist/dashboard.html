@@ -1864,7 +1864,12 @@ async function loadSetupPage() {
 </div>
 <strong>Install Claude Code CLI on this server:</strong>
 ${cmdBlock('curl -fsSL https://claude.ai/install.sh | sh')}
-<p style="margin:6px 0;color:var(--text-muted);">Or via npm:</p>${cmdBlock('npm install -g @anthropic-ai/claude-code')}`,
+<p style="margin:6px 0;color:var(--text-muted);">Or via npm:</p>${cmdBlock('npm install -g @anthropic-ai/claude-code')}
+<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;">
+<strong>Alternative: <a href="https://opencode.ai" target="_blank" style="color:var(--accent);">OpenCode</a></strong> <span style="color:var(--text-dim);font-size:12px;">— open-source AI coding agent, reads CLAUDE.md natively</span>
+${cmdBlock('curl -fsSL https://opencode.ai/install | bash')}
+<p style="margin:4px 0 0;font-size:12px;color:var(--text-dim);">Supports Claude Max, API keys, and 75+ other LLM providers. Uses the same MCP server config.</p>
+</div>`,
       "claude-auth": `<strong>Authenticate Claude Code:</strong>
 <p style="margin:6px 0;color:var(--text-muted);">Option 1 — OAuth with Claude Max (recommended):</p>
 ${cmdBlock('claude auth login')}

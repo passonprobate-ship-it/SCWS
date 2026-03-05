@@ -9,13 +9,22 @@
 detect_claude_cli() {
   local claude_bin=""
 
-  # Check common install locations
+  # Check common install locations for Claude Code CLI
   if command -v claude &>/dev/null; then
     claude_bin="$(command -v claude)"
   elif [[ -x "$HOME/.local/bin/claude" ]]; then
     claude_bin="$HOME/.local/bin/claude"
   elif [[ -x "/usr/local/bin/claude" ]]; then
     claude_bin="/usr/local/bin/claude"
+  fi
+
+  # Also accept OpenCode as an alternative AI CLI
+  if [[ -z "$claude_bin" ]]; then
+    if command -v opencode &>/dev/null; then
+      claude_bin="$(command -v opencode)"
+    elif [[ -x "$HOME/.local/bin/opencode" ]]; then
+      claude_bin="$HOME/.local/bin/opencode"
+    fi
   fi
 
   if [[ -n "$claude_bin" ]]; then

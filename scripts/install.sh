@@ -54,14 +54,30 @@ warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 
 banner() {
-  printf "\n${CYAN}${BOLD}"
-  printf '  ____  ____   ___  _      __ _   _\n'
-  printf ' / ___||  _ \\ / _ \\| |    / /| \\ | |\n'
-  printf ' \\___ \\| |_) / /_\\ | | /\\/ / |  \\| |\n'
-  printf '  ___) |  __/ ___ | |/ __/  | |\\  |\n'
-  printf ' |____/|_| /_/   \\_|__/\\_\\  |_| \\_|\n'
+  printf "\n${CYAN}"
+  printf '       _______________________________________________\n'
+  printf '      |                                               |\n'
+  printf '      |      ${BOLD}┌─────────────────────────────┐${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}│  ┌──┐   ┌──┐   ┌──┐   ┌──┐ │${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}│  │${GREEN}▓▓${NC}${CYAN}${BOLD}│   │${GREEN}▓▓${NC}${CYAN}${BOLD}│   │  │   │  │ │${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}│  └──┘   └──┘   └──┘   └──┘ │${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}│         ╔══════════╗         │${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}│         ║${GREEN} ▓▓▓▓▓▓▓▓ ${NC}${CYAN}${BOLD}║         │${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}│         ╚══════════╝         │${NC}${CYAN}      |\n'
+  printf '      |      ${BOLD}└──────────────┬──┬─────────────┘${NC}${CYAN}      |\n'
+  printf '      |_________________________|__|________________|\n'
+  printf '                                |  |\n'
   printf "${NC}\n"
-  printf "  ${DIM}One-Line Installer${NC}\n\n"
+  printf "${BOLD}${CYAN}"
+  printf '   ███████╗██████╗  █████╗ ██╗    ██╗███╗   ██╗\n'
+  printf '   ██╔════╝██╔══██╗██╔══██╗██║    ██║████╗  ██║\n'
+  printf '   ███████╗██████╔╝███████║██║ █╗ ██║██╔██╗ ██║\n'
+  printf '   ╚════██║██╔═══╝ ██╔══██║██║███╗██║██║╚██╗██║\n'
+  printf '   ███████║██║     ██║  ██║╚███╔███╔╝██║ ╚████║\n'
+  printf '   ╚══════╝╚═╝     ╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═══╝\n'
+  printf "${NC}\n"
+  printf "   ${BOLD}Self-Programming Autonomous Web Node${NC}\n"
+  printf "   ${DIM}One machine. One install. Unlimited projects.${NC}\n\n"
 }
 
 # ── 1. Preflight checks ────────────────────────────────────────────────────
@@ -432,33 +448,36 @@ ELAPSED_SEC=$(( ELAPSED % 60 ))
 printf "\n"
 if $HEALTH_OK; then
   printf "${GREEN}${BOLD}"
-  printf "  =============================================\n"
-  printf "    SPAWN is installed and running!\n"
-  printf "    Completed in ${ELAPSED_MIN}m ${ELAPSED_SEC}s\n"
-  printf "  =============================================\n"
+  printf '   ╔═══════════════════════════════════════════════════╗\n'
+  printf '   ║                                                   ║\n'
+  printf '   ║           ┌───────┐                               ║\n'
+  printf '   ║           │ ◉   ◉ │    SPAWN IS ALIVE!            ║\n'
+  printf '   ║           │  ───  │    Installed in %dm %02ds        ║\n' "$ELAPSED_MIN" "$ELAPSED_SEC"
+  printf '   ║           └───┬───┘                               ║\n'
+  printf '   ║            ┌──┴──┐     Your autonomous server     ║\n'
+  printf '   ║            │ ▓▓▓ │     is ready to build.         ║\n'
+  printf '   ║            └──┬──┘                               ║\n'
+  printf '   ║              ╱ ╲                                  ║\n'
+  printf '   ║                                                   ║\n'
+  printf '   ╚═══════════════════════════════════════════════════╝\n'
   printf "${NC}\n"
 else
   printf "${YELLOW}${BOLD}"
-  printf "  =============================================\n"
-  printf "    SPAWN installed but health check failed\n"
-  printf "    Completed in ${ELAPSED_MIN}m ${ELAPSED_SEC}s\n"
-  printf "  =============================================\n"
+  printf '   ╔═══════════════════════════════════════════════════╗\n'
+  printf '   ║                                                   ║\n'
+  printf '   ║           ┌───────┐                               ║\n'
+  printf '   ║           │ ◉   ◉ │    SPAWN INSTALLED            ║\n'
+  printf '   ║           │  ~~~  │    Health check failed        ║\n'
+  printf '   ║           └───┬───┘    Completed in %dm %02ds       ║\n' "$ELAPSED_MIN" "$ELAPSED_SEC"
+  printf '   ║            ┌──┴──┐                                ║\n'
+  printf '   ║            │ ▓▓▓ │     Check the logs below.      ║\n'
+  printf '   ║            └──┬──┘                                ║\n'
+  printf '   ║              ╱ ╲                                  ║\n'
+  printf '   ║                                                   ║\n'
+  printf '   ╚═══════════════════════════════════════════════════╝\n'
   printf "${NC}\n"
   printf "  Check logs: ${CYAN}sudo -u $SPAWN_USER pm2 logs scws-daemon --lines 30${NC}\n\n"
 fi
-
-CREDS_FILE="$SCWS_ROOT/daemon/.install-credentials"
-cat > "$CREDS_FILE" <<CREDSEOF
-SPAWN Install Credentials — $(date)
-Dashboard URL:    ${BASE_URL}
-Dashboard Token:  ${DASHBOARD_TOKEN}
-DB Password:      ${SPAWN_DB_PASSWORD}
-System User:      ${SPAWN_USER}
-Install Path:     ${SCWS_ROOT}
-.env:             ${SCWS_ROOT}/daemon/.env
-CREDSEOF
-chmod 600 "$CREDS_FILE"
-chown "${SPAWN_USER}:${SPAWN_USER}" "$CREDS_FILE"
 
 printf "  ${BOLD}Dashboard:${NC}       ${CYAN}${BASE_URL}${NC}\n"
 printf "  ${BOLD}System User:${NC}     ${CYAN}${SPAWN_USER}${NC}\n"
@@ -480,6 +499,20 @@ printf "${NC}\n"
 printf "  ${DIM}Lost it? Run this anytime to get it back:${NC}\n"
 printf "  ${CYAN}grep DASHBOARD_TOKEN $SCWS_ROOT/daemon/.env | cut -d= -f2${NC}\n"
 printf "\n"
+
+CREDS_FILE="$SCWS_ROOT/daemon/.install-credentials"
+cat > "$CREDS_FILE" <<CREDSEOF
+SPAWN Install Credentials — $(date)
+Dashboard URL:    ${BASE_URL}
+Dashboard Token:  ${DASHBOARD_TOKEN}
+DB Password:      ${SPAWN_DB_PASSWORD}
+System User:      ${SPAWN_USER}
+Install Path:     ${SCWS_ROOT}
+.env:             ${SCWS_ROOT}/daemon/.env
+CREDSEOF
+chmod 600 "$CREDS_FILE"
+chown "${SPAWN_USER}:${SPAWN_USER}" "$CREDS_FILE"
+
 printf "  ${BOLD}Next steps:${NC}\n"
 printf "    1. Open the dashboard: ${CYAN}${BASE_URL}${NC}\n"
 printf "    2. Run onboarding (Claude CLI, auth, GitHub):\n"
@@ -494,4 +527,7 @@ printf "  ${BOLD}Useful commands:${NC}\n"
 printf "    ${CYAN}sudo -u $SPAWN_USER pm2 status${NC}           # Process status\n"
 printf "    ${CYAN}sudo -u $SPAWN_USER pm2 logs scws-daemon${NC} # Daemon logs\n"
 printf "    ${CYAN}cat $SCWS_ROOT/daemon/.env${NC}         # View credentials\n"
+printf "\n"
+printf "${DIM}  ─────────────────────────────────────────────────────${NC}\n"
+printf "  ${DIM}Powered by SPAWN — ideas in, running software out.${NC}\n"
 printf "\n"
