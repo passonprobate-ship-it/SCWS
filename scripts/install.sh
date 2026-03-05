@@ -93,6 +93,11 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Update system packages first
+log "Updating system packages..."
+apt-get update -qq
+apt-get upgrade -y -qq
+
 # Must be Ubuntu
 if [[ ! -f /etc/os-release ]]; then
   err "Cannot detect OS. This installer requires Ubuntu."
