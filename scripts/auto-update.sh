@@ -3,7 +3,7 @@
 # SPAWN Auto-Update Engine
 # =============================================================================
 # Polls origin/master for new commits and applies component-aware updates.
-# Designed to run via cron every 5 minutes.
+# Designed to run via cron every hour.
 #
 # Usage:
 #   bash scripts/auto-update.sh              # Normal run (cron)
@@ -381,21 +381,33 @@ if (( PROJECTS_FAILED > 0 )); then
   SUMMARY="$SUMMARY, ${PROJECTS_FAILED} project(s) FAILED"
 fi
 if $DAEMON_RESTART; then
-  SUMMARY="$SUMMARY, daemon restart pending"
+  SUMMARY="$SUMMARY, daemon restart required (waiting for user approval)"
 fi
 
 log "$SUMMARY"
 notify_daemon "$SUMMARY"
 notify_cortex "$SUMMARY"
 
-# ── Daemon restart LAST ──────────────────────────────────────────────────────
+# ── Daemon restart (requires user approval) ─────────────────────────────────
 
 if $DAEMON_RESTART; then
-  log "Daemon files changed — restarting scws-daemon (this will terminate any active Claude session)"
-  pm2 save --force >/dev/null 2>&1 || true
-  pm2 restart scws-daemon >/dev/null 2>&1 &
-  # Backgrounded so this script can exit cleanly before being killed
-  exit 0
+  log "Daemon files changed — restart required but NOT auto-restarting (user must approve)"
+  # Notify via daemon API so the dashboard shows a banner
+  if [[ -n "$DASHBOARD_TOKEN" ]]; then
+    curl -sf -X POST "http://localhost:4000/api/activity" \
+      -H "Authorization: Bearer $DASHBOARD_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"action":"daemon_restart_pending","details":"Auto-update pulled daemon changes. Restart required to apply. Run: pm2 restart scws-daemon"}' \
+      >/dev/null 2>&1 || true
+    # Set a daemon config flag the dashboard can check
+    curl -sf -X POST "http://localhost:4000/api/config" \
+      -H "Authorization: Bearer $DASHBOARD_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"key":"daemon_restart_pending","value":"true"}' \
+      >/dev/null 2>&1 || true
+  fi
+  notify_cortex "SPAWN auto-update: daemon restart required. Approve in dashboard or run: pm2 restart scws-daemon"
+  log "Dashboard notified — user must restart manually"
 fi
 
 log "Auto-update complete"

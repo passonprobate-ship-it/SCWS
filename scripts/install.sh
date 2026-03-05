@@ -394,7 +394,7 @@ step "Installing auto-update cron..."
 
 chmod +x "$SCWS_ROOT/scripts/"*.sh 2>/dev/null || true
 
-AUTO_UPDATE_CRON="*/5 * * * * bash $SCWS_ROOT/scripts/auto-update.sh >> $SCWS_ROOT/logs/auto-update.log 2>&1"
+AUTO_UPDATE_CRON="0 * * * * bash $SCWS_ROOT/scripts/auto-update.sh >> $SCWS_ROOT/logs/auto-update.log 2>&1"
 EXISTING_CRON=$(sudo -u "$SPAWN_USER" crontab -l 2>/dev/null | grep -v 'auto-update.sh' || true)
 printf '%s\n%s\n' "$EXISTING_CRON" "$AUTO_UPDATE_CRON" | sudo -u "$SPAWN_USER" crontab -
 

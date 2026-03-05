@@ -433,7 +433,7 @@ chmod +x /var/www/scws/scripts/backup-offsite.sh
 # Install cron jobs for codeman
 CRON_LOCAL="0 2 * * * /var/www/scws/scripts/backup-db.sh >> /var/www/scws/logs/backup.log 2>&1"
 CRON_OFFSITE="15 2 * * * /var/www/scws/scripts/backup-offsite.sh >> /var/www/scws/logs/backup-offsite.log 2>&1"
-CRON_UPDATE="*/5 * * * * /var/www/scws/scripts/auto-update.sh >> /var/www/scws/logs/auto-update.log 2>&1"
+CRON_UPDATE="0 * * * * /var/www/scws/scripts/auto-update.sh >> /var/www/scws/logs/auto-update.log 2>&1"
 (sudo -u "$SPAWN_USER" crontab -l 2>/dev/null | grep -v 'backup-db.sh' | grep -v 'backup-offsite.sh' | grep -v 'auto-update.sh'; echo "$CRON_LOCAL"; echo "$CRON_OFFSITE"; echo "$CRON_UPDATE") \
   | sudo -u "$SPAWN_USER" crontab -
 
