@@ -1012,6 +1012,7 @@
             <div class="page-title" style="margin:0;">Terminal</div>
           </div>
           <div class="terminal-header-right">
+            <button class="btn btn-sm" id="term-back-setup-btn" onclick="navigate('setup')" style="display:none;background:rgba(0,212,255,.12);color:var(--accent);border:1px solid var(--accent);">&#x2190; Back to Setup</button>
             <button class="btn btn-sm" id="term-connect-btn" onclick="toggleTerminal()">Connect</button>
           </div>
         </div>
@@ -1825,9 +1826,31 @@ async function loadSetupPage() {
         fallback();
       }
     }
+    function runInTerminal(cmd) {
+      // Navigate to terminal page
+      navigate('claude');
+      // Show the "Back to Setup" button
+      const backBtn = document.getElementById('term-back-setup-btn');
+      if (backBtn) backBtn.style.display = '';
+      // Wait for terminal to connect, then send the command
+      const maxWait = 5000;
+      const start = Date.now();
+      function trySend() {
+        if (termWs && termWs.readyState === WebSocket.OPEN) {
+          termWs.send(JSON.stringify({ type: "input", data: cmd + "\n" }));
+          if (typeof toast === 'function') toast("Command running — click 'Back to Setup' when done", "info", 5000);
+        } else if (Date.now() - start < maxWait) {
+          setTimeout(trySend, 200);
+        } else {
+          if (typeof toast === 'function') toast("Terminal not connected — try again", "error");
+        }
+      }
+      trySend();
+    }
     function cmdBlock(cmd) {
       const id = 'cmd-' + Math.random().toString(36).slice(2,8);
-      return `<div style="position:relative;"><pre id="${id}" style="background:var(--bg-input);padding:12px 40px 12px 12px;border-radius:6px;margin:8px 0;overflow-x:auto;font-size:13px;">${cmd}</pre><button onclick="copyToClipboard(document.getElementById('${id}').textContent.trim(), this)" style="position:absolute;top:12px;right:8px;background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;color:var(--text-dim);" title="Copy to clipboard">&#x1F4CB;</button></div>`;
+      const escaped = cmd.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+      return `<div style="position:relative;display:flex;align-items:center;gap:0;"><pre id="${id}" style="flex:1;background:var(--bg-input);padding:12px 12px;border-radius:6px 0 0 6px;margin:8px 0;overflow-x:auto;font-size:13px;">${cmd}</pre><button onclick="runInTerminal('${escaped}')" style="background:var(--accent);border:none;border-radius:0 6px 6px 0;padding:12px 14px;margin:8px 0;cursor:pointer;font-size:15px;color:#0a0a0f;display:flex;align-items:center;" title="Run in terminal">&#x25B6;</button></div>`;
     }
     const stepInstructions = {
       "daemon": "The daemon is running. No action needed.",
@@ -1855,8 +1878,8 @@ ${cmdBlock('bash /var/www/scws/onboard.sh --step 5')}`
     let html = '<h2 style="margin:0 0 8px;">Setup</h2>';
     html += '<p style="color:var(--text-muted);margin:0 0 8px;">Post-deploy onboarding. Complete these steps to enable AI sessions.</p>';
     html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:24px;display:flex;align-items:center;gap:10px;">';
-    html += '<span style="font-size:16px;">&#x1F4BB;</span>';
-    html += '<span style="font-size:12px;color:var(--text-dim);line-height:1.4;">Run these commands in the <strong style="color:var(--text);">Terminal</strong> — open it from the sidebar menu on the left, or SSH into this server directly.</span>';
+    html += '<span style="font-size:16px;">&#x25B6;</span>';
+    html += '<span style="font-size:12px;color:var(--text-dim);line-height:1.4;">Click the <strong style="color:var(--accent);">&#x25B6; play button</strong> next to any command to run it in the Terminal automatically. Come back to this page to continue with the next step.</span>';
     html += '</div>';
 
     // Stepper
