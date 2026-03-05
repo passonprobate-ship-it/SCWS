@@ -22,11 +22,33 @@ set -euo pipefail
 SCWS_ROOT="/var/www/scws"
 REPO_URL="https://github.com/passonprobate-ship-it/SCWS.git"
 BRANCH="master"
+INSTALL_START=$(date +%s)
+FORCE=false
+
+# ── Parse flags ─────────────────────────────────────────────────────────────
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=true ;;
+    --help|-h)
+      echo "Usage: bash install.sh [--force]"
+      echo ""
+      echo "  --force   Remove existing installation and start fresh"
+      echo ""
+      exit 0
+      ;;
+  esac
+done
 
 # ── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 
+TOTAL_STEPS=13
+CURRENT_STEP=0
+step() {
+  CURRENT_STEP=$((CURRENT_STEP + 1))
+  printf "${GREEN}[SPAWN ${CURRENT_STEP}/${TOTAL_STEPS}]${NC} %s\n" "$*"
+}
 log()  { printf "${GREEN}[SPAWN]${NC} %s\n" "$*"; }
 warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
@@ -46,7 +68,7 @@ banner() {
 
 banner
 
-log "Running preflight checks..."
+step "Running preflight checks..."
 
 # Must be root
 if [[ $EUID -ne 0 ]]; then
@@ -85,14 +107,50 @@ case "$ARCH" in
     ;;
 esac
 
-log "OS: Ubuntu $VERSION_ID ($ARCH)"
+log "  OS: Ubuntu $VERSION_ID ($ARCH)"
+
+# Check disk space (need at least 2GB free)
+DISK_FREE_MB=$(df -m / | awk 'NR==2 {print $4}')
+if [[ "$DISK_FREE_MB" -lt 2000 ]]; then
+  err "Not enough disk space. Need at least 2GB free, have ${DISK_FREE_MB}MB."
+  exit 1
+fi
+log "  Disk: ${DISK_FREE_MB}MB free"
+
+# Check RAM (warn if under 512MB)
+RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+if [[ "$RAM_MB" -lt 512 ]]; then
+  err "Not enough RAM. Need at least 512MB, have ${RAM_MB}MB."
+  exit 1
+fi
+log "  RAM: ${RAM_MB}MB"
+
+# Check if port 80 is already in use by something other than nginx
+if command -v ss &>/dev/null; then
+  PORT80_PID=$(ss -tlnp 'sport = :80' 2>/dev/null | grep -v nginx | awk 'NR>1 {print $0}' || true)
+  if [[ -n "$PORT80_PID" ]]; then
+    warn "Port 80 is in use by a non-nginx process. nginx may fail to start."
+    warn "Run: ss -tlnp 'sport = :80' to see what's using it."
+  fi
+fi
 
 # Check if already installed
 if [[ -d "$SCWS_ROOT/daemon/dist" ]] && [[ -f "$SCWS_ROOT/daemon/.env" ]]; then
-  warn "SPAWN appears to be already installed at $SCWS_ROOT"
-  printf "  To update, use: ${CYAN}bash $SCWS_ROOT/scripts/auto-update.sh --force${NC}\n"
-  printf "  To reinstall, remove $SCWS_ROOT first.\n"
-  exit 1
+  if $FORCE; then
+    warn "Existing installation found — removing it (--force)"
+    # Stop PM2 processes first
+    SPAWN_USER_EXISTING=$(stat -c '%U' "$SCWS_ROOT" 2>/dev/null || echo "spawn")
+    sudo -u "$SPAWN_USER_EXISTING" pm2 delete all 2>/dev/null || true
+    rm -rf "$SCWS_ROOT"
+  else
+    warn "SPAWN appears to be already installed at $SCWS_ROOT"
+    printf "\n"
+    printf "  To update:    ${CYAN}bash $SCWS_ROOT/scripts/auto-update.sh --force${NC}\n"
+    printf "  To reinstall: ${CYAN}curl -fsSL <url> | bash -s -- --force${NC}\n"
+    printf "  To nuke it:   ${CYAN}rm -rf $SCWS_ROOT && rerun this script${NC}\n"
+    printf "\n"
+    exit 1
+  fi
 fi
 
 # Must have git (install if missing)
@@ -101,9 +159,11 @@ if ! command -v git &>/dev/null; then
   apt-get update -qq && apt-get install -y -qq git
 fi
 
+log "  Preflight checks passed"
+
 # ── 2. Generate secrets ────────────────────────────────────────────────────
 
-log "Generating secrets..."
+step "Generating secrets..."
 
 SPAWN_DB_PASSWORD=$(openssl rand -hex 24)
 DASHBOARD_TOKEN=$(openssl rand -hex 24)
@@ -112,7 +172,7 @@ log "Secrets generated (will be saved to .env)"
 
 # ── 3. Clone the repository ────────────────────────────────────────────────
 
-log "Cloning SPAWN repository..."
+step "Cloning SPAWN repository..."
 
 if [[ -d "$SCWS_ROOT" ]]; then
   warn "$SCWS_ROOT already exists but is incomplete — removing and re-cloning"
@@ -147,7 +207,7 @@ if [[ ! -f "$BOOTSTRAP_SCRIPT" ]]; then
   exit 1
 fi
 
-log "Running system bootstrap (this takes a few minutes)..."
+step "Running system bootstrap (this takes a few minutes)..."
 
 export SPAWN_DB_PASSWORD
 if $IS_PI; then
@@ -191,7 +251,7 @@ fi
 
 # ── 6. Install daemon npm dependencies ──────────────────────────────────────
 
-log "Installing daemon dependencies..."
+step "Installing daemon dependencies..."
 
 cd "$SCWS_ROOT/daemon"
 npm install --omit=dev --no-audit --no-fund 2>&1 | tail -3
@@ -200,7 +260,7 @@ log "Daemon dependencies installed"
 
 # ── 7. Generate .env ────────────────────────────────────────────────────────
 
-log "Generating daemon .env..."
+step "Generating daemon .env..."
 
 ENV_TEMPLATE="$SCWS_ROOT/projects/spawn-vps/templates/env.template"
 if $IS_PI && [[ -f "$SCWS_ROOT/projects/spawn-pi/templates/env.template" ]]; then
@@ -257,7 +317,7 @@ log ".env written to $ENV_FILE"
 
 # ── 8. Generate ecosystem.config.cjs ───────────────────────────────────────
 
-log "Generating PM2 ecosystem config..."
+step "Generating PM2 ecosystem config..."
 
 ECO_TEMPLATE="$SCWS_ROOT/projects/spawn-vps/templates/ecosystem.template.cjs"
 if $IS_PI && [[ -f "$SCWS_ROOT/projects/spawn-pi/templates/ecosystem.template.cjs" ]]; then
@@ -300,7 +360,7 @@ log "ecosystem.config.cjs generated"
 
 # ── 9. Create database schema ──────────────────────────────────────────────
 
-log "Creating database schema..."
+step "Creating database schema..."
 
 SCHEMA_FILE="$SCWS_ROOT/scripts/schema.sql"
 
@@ -314,13 +374,13 @@ fi
 
 # ── 10. Fix ownership ──────────────────────────────────────────────────────
 
-log "Setting file ownership..."
+step "Setting file ownership..."
 
 chown -R "${SPAWN_USER}:${SPAWN_USER}" "$SCWS_ROOT"
 
 # ── 11. Start daemon ───────────────────────────────────────────────────────
 
-log "Starting SPAWN daemon..."
+step "Starting SPAWN daemon..."
 
 cd "$SCWS_ROOT/daemon"
 sudo -u "$SPAWN_USER" pm2 start ecosystem.config.cjs
@@ -330,7 +390,7 @@ log "Daemon started via PM2"
 
 # ── 12. Install auto-update cron ───────────────────────────────────────────
 
-log "Installing auto-update cron..."
+step "Installing auto-update cron..."
 
 chmod +x "$SCWS_ROOT/scripts/"*.sh 2>/dev/null || true
 
@@ -342,13 +402,14 @@ log "Auto-update cron installed (every 5 minutes)"
 
 # ── 13. Stamp version ──────────────────────────────────────────────────────
 
+step "Stamping version..."
 if [[ -f "$SCWS_ROOT/scripts/stamp-version.sh" ]]; then
   bash "$SCWS_ROOT/scripts/stamp-version.sh" --deploy-method=install 2>/dev/null || true
 fi
 
 # ── 14. Health check ───────────────────────────────────────────────────────
 
-log "Running health check..."
+step "Running health check..."
 
 sleep 3
 
@@ -363,17 +424,24 @@ done
 
 # ── 15. Print summary ──────────────────────────────────────────────────────
 
+INSTALL_END=$(date +%s)
+ELAPSED=$(( INSTALL_END - INSTALL_START ))
+ELAPSED_MIN=$(( ELAPSED / 60 ))
+ELAPSED_SEC=$(( ELAPSED % 60 ))
+
 printf "\n"
 if $HEALTH_OK; then
   printf "${GREEN}${BOLD}"
   printf "  =============================================\n"
   printf "    SPAWN is installed and running!\n"
+  printf "    Completed in ${ELAPSED_MIN}m ${ELAPSED_SEC}s\n"
   printf "  =============================================\n"
   printf "${NC}\n"
 else
   printf "${YELLOW}${BOLD}"
   printf "  =============================================\n"
   printf "    SPAWN installed but health check failed\n"
+  printf "    Completed in ${ELAPSED_MIN}m ${ELAPSED_SEC}s\n"
   printf "  =============================================\n"
   printf "${NC}\n"
   printf "  Check logs: ${CYAN}sudo -u $SPAWN_USER pm2 logs scws-daemon --lines 30${NC}\n\n"
@@ -397,8 +465,20 @@ printf "  ${BOLD}System User:${NC}     ${CYAN}${SPAWN_USER}${NC}\n"
 printf "  ${BOLD}Install Path:${NC}    ${CYAN}${SCWS_ROOT}${NC}\n"
 printf "  ${BOLD}.env:${NC}            ${CYAN}${SCWS_ROOT}/daemon/.env${NC}\n"
 printf "\n"
-printf "  ${YELLOW}${BOLD}Credentials saved to:${NC} ${CYAN}${CREDS_FILE}${NC}\n"
-printf "  ${DIM}(readable only by ${SPAWN_USER} — chmod 600)${NC}\n"
+
+# ── Show the dashboard token prominently ──────────────────────────────────
+printf "${YELLOW}${BOLD}"
+printf "  ┌─────────────────────────────────────────────┐\n"
+printf "  │  YOUR DASHBOARD TOKEN (copy this now!):     │\n"
+printf "  │                                             │\n"
+printf "  │  ${CYAN}%-43s${YELLOW}│\n" "$DASHBOARD_TOKEN"
+printf "  │                                             │\n"
+printf "  │  Paste it into the login page at:           │\n"
+printf "  │  ${CYAN}%-43s${YELLOW}│\n" "$BASE_URL"
+printf "  └─────────────────────────────────────────────┘\n"
+printf "${NC}\n"
+printf "  ${DIM}Lost it? Run this anytime to get it back:${NC}\n"
+printf "  ${CYAN}grep DASHBOARD_TOKEN $SCWS_ROOT/daemon/.env | cut -d= -f2${NC}\n"
 printf "\n"
 printf "  ${BOLD}Next steps:${NC}\n"
 printf "    1. Open the dashboard: ${CYAN}${BASE_URL}${NC}\n"

@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCWS_ROOT="/var/www/scws"
 
 # ── Colors ────────────────────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[DEPLOY]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 err()  { echo -e "${RED}[ERROR]${NC} $*" >&2; }
@@ -353,7 +353,14 @@ log "============================================"
 echo ""
 info "Dashboard URL:   ${SPAWN_BASE_URL}"
 if [[ "$MODE" != "update" ]]; then
-  info "Dashboard Token: ${SPAWN_DASHBOARD_TOKEN}"
+  echo ""
+  echo -e "${YELLOW}${BOLD:-}  ┌─────────────────────────────────────────────┐"
+  echo -e "  │  YOUR DASHBOARD TOKEN (copy this now!):     │"
+  echo -e "  │                                             │"
+  printf "  │  ${CYAN}%-43s${YELLOW}│\n" "$SPAWN_DASHBOARD_TOKEN"
+  echo -e "  │                                             │"
+  echo -e "  └─────────────────────────────────────────────┘${NC}"
+  echo ""
   info "DB Password:     ${SPAWN_DB_PASSWORD}"
 fi
 echo ""
@@ -364,6 +371,23 @@ if [[ "$ENABLE_TAILSCALE" == "true" ]]; then
   info "Tailscale:       ssh ${VPS_USER}@${VPS_HOST} 'sudo tailscale up --hostname=${SPAWN_HOSTNAME}'"
 fi
 info "Save these credentials! They won't be shown again."
+
+# ── Auto-open browser on local machine ──────────────────────────────────
+if [[ "$MODE" != "update" ]]; then
+  OPEN_CMD=""
+  if command -v xdg-open &>/dev/null; then
+    OPEN_CMD="xdg-open"
+  elif command -v open &>/dev/null; then
+    OPEN_CMD="open"
+  fi
+
+  if [[ -n "$OPEN_CMD" ]]; then
+    echo ""
+    info "Opening dashboard in your browser..."
+    $OPEN_CMD "${SPAWN_BASE_URL}" 2>/dev/null &
+  fi
+fi
+
 echo ""
 log "──────────────────────────────────────────"
 log "  Next: Run onboarding to enable AI"

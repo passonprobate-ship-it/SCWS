@@ -933,6 +933,7 @@
   <p class="auth-sub">Self-Programming Autonomous Web Node</p>
   <input type="password" id="token-input" placeholder="Enter dashboard token" autofocus>
   <div id="auth-error" style="color: var(--red); font-size: 12px; display: none;"></div>
+  <p class="auth-sub" style="margin-top: 16px; font-size: 11px; opacity: 0.5;">Find your token: grep DASHBOARD_TOKEN /var/www/scws/daemon/.env</p>
 </div>
 
 <!-- Main App -->
@@ -3746,17 +3747,28 @@ async function loadSystem() {
           <div style="font-size:11px; color:var(--text-muted);">running of ${data.projects.total}</div>
         </div>
       </div>
-      <div class="card">
-        <div style="font-weight:600; margin-bottom:4px;">System Uptime</div>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">${data.uptime || "N/A"}</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="card">
+          <div style="font-weight:600; margin-bottom:4px;">System Uptime</div>
+          <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">${data.uptime || "N/A"}</div>
+        </div>
+        <div class="card">
+          <div style="font-weight:600; margin-bottom:4px;">Timezone</div>
+          <div id="tz-clock" style="font-size:22px; font-weight:700; color:var(--green); margin:4px 0;"></div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="tz-current" style="font-size:13px; color:var(--text-muted);">Loading...</span>
+            <button class="btn btn-sm" onclick="showTimezoneModal()">Change</button>
+          </div>
+        </div>
       </div>
     `;
 
-    // Load PM2 processes + watchdog + network + memory chart
+    // Load PM2 processes + watchdog + network + memory chart + timezone
     loadPM2Processes();
     loadWatchdog();
     loadNetworkStatus().then(() => renderNetworkCards());
     loadMemoryChart();
+    loadTimezone();
   } catch (err) {
     document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed: ${escapeHtml(err.message || String(err))}</div>`;
   }
@@ -3970,6 +3982,75 @@ function setAutoRefresh(sec) {
   } else {
     document.getElementById(`ar-${sec}`).classList.add("active");
     autoRefreshTimer = setInterval(() => loadSystem(), sec * 1000);
+  }
+}
+
+// ── Timezone ──────────────────────────────────────────────────────
+const COMMON_TIMEZONES = [
+  "America/New_York","America/Chicago","America/Denver","America/Los_Angeles",
+  "America/Phoenix","America/Anchorage","Pacific/Honolulu","America/Mexico_City",
+  "America/Toronto","America/Vancouver","America/Sao_Paulo","America/Argentina/Buenos_Aires",
+  "Europe/London","Europe/Paris","Europe/Berlin","Europe/Moscow",
+  "Asia/Tokyo","Asia/Shanghai","Asia/Kolkata","Asia/Dubai",
+  "Australia/Sydney","Australia/Perth","Pacific/Auckland","UTC"
+];
+
+let tzClockInterval = null;
+async function loadTimezone() {
+  try {
+    const data = await api("/api/system/timezone");
+    const el = document.getElementById("tz-current");
+    if (el) el.textContent = data.timezone || "Unknown";
+    if (tzClockInterval) clearInterval(tzClockInterval);
+    function tickClock() {
+      const clock = document.getElementById("tz-clock");
+      if (!clock) { clearInterval(tzClockInterval); return; }
+      try {
+        clock.textContent = new Date().toLocaleTimeString("en-US", { timeZone: data.timezone, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      } catch { clock.textContent = new Date().toLocaleTimeString(); }
+    }
+    tickClock();
+    tzClockInterval = setInterval(tickClock, 1000);
+  } catch {}
+}
+
+function showTimezoneModal() {
+  const current = document.getElementById("tz-current")?.textContent || "";
+  const options = COMMON_TIMEZONES.map(tz =>
+    `<option value="${tz}" ${tz === current ? 'selected' : ''}>${tz.replace(/_/g, ' ')}</option>`
+  ).join("");
+  const el = document.getElementById("generic-modal-content");
+  el.innerHTML = `
+    <div class="modal-title">Change Timezone</div>
+    <div class="form-group">
+      <label class="form-label">Select timezone</label>
+      <select id="tz-select" class="input">${options}</select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Or type a timezone</label>
+      <input id="tz-custom" class="input" placeholder="e.g. America/Chicago" value="${escapeHtml(current)}">
+    </div>
+    <div class="flex gap-8 mt-12" style="justify-content:flex-end;">
+      <button class="btn" onclick="hideModal('generic-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="setTimezone()">Save</button>
+    </div>
+  `;
+  showModal("generic-modal");
+  document.getElementById("tz-select").addEventListener("change", function() {
+    document.getElementById("tz-custom").value = this.value;
+  });
+}
+
+async function setTimezone() {
+  const tz = document.getElementById("tz-custom").value.trim();
+  if (!tz) return;
+  try {
+    await api("/api/system/timezone", { method: "POST", body: { timezone: tz } });
+    hideModal("generic-modal");
+    toast("Timezone set to " + tz, "success");
+    loadTimezone();
+  } catch (err) {
+    toast("Failed: " + (err.message || err), "error");
   }
 }
 
