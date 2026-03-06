@@ -549,17 +549,9 @@ fi
 
 chown -R "${SPAWN_USER}:${SPAWN_USER}" "$CLAUDE_DIR"
 
-# ── OpenCode: project-level opencode.json ──
-OPENCODE_CFG="$SCWS_ROOT/opencode.json"
-cat > "$OPENCODE_CFG" <<OPENCODEJSON
-{
-  "mcpServers": {
-    "spawn": ${MCP_CONFIG}
-  }
-}
-OPENCODEJSON
-chown "${SPAWN_USER}:${SPAWN_USER}" "$OPENCODE_CFG"
-log "Created opencode.json for OpenCode compatibility"
+# Note: OpenCode reads ~/.claude/settings.json natively — no separate config needed.
+# An opencode.json in the project root uses a different schema (agent, mode, plugin)
+# and must NOT contain mcpServers (causes "Unrecognized key" error on startup).
 
 # ── Fix OpenCode PATH if installed ──
 # OpenCode installs to ~/.opencode/bin which isn't in PATH by default
