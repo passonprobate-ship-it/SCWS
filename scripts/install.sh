@@ -61,7 +61,7 @@ banner() {
   printf "${CYAN}            .-----------------------------.${NC}\n"
   printf "${CYAN}            |  ${GREEN}[]${NC}${CYAN}  ${GREEN}[]${NC}${CYAN}          []    [] |${NC}\n"
   printf "${CYAN}            |         .----------.        |${NC}\n"
-  printf "${CYAN}            |         | ${GREEN}==========${NC}${CYAN} |        |${NC}\n"
+  printf "${CYAN}            |         |${GREEN}==========${NC}${CYAN}|        |${NC}\n"
   printf "${CYAN}            |         '----------'        |${NC}\n"
   printf "${CYAN}            '--------------.---.----------'${NC}\n"
   printf "${CYAN}                           |   |${NC}\n"
