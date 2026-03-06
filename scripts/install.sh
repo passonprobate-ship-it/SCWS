@@ -461,7 +461,7 @@ if $HEALTH_OK; then
   printf '   ║           └───┬───┘                               ║\n'
   printf '   ║            ┌──┴──┐     Your autonomous server     ║\n'
   printf '   ║            │ ▓▓▓ │     is ready to build.         ║\n'
-  printf '   ║            └──┬──┘                               ║\n'
+  printf '   ║            └──┬──┘                                ║\n'
   printf '   ║              ╱ ╲                                  ║\n'
   printf '   ║                                                   ║\n'
   printf '   ╚═══════════════════════════════════════════════════╝\n'
