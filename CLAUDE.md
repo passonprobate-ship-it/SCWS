@@ -18,10 +18,20 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 
 - **Platform**: Ubuntu Server (Raspberry Pi, VPS, or bare metal — amd64 or arm64)
 - **Hostname**: SPAWN (configurable)
-- **User**: Non-root user with passwordless sudo (default: `spawn`)
+- **User**: Non-root user with passwordless sudo (set during bootstrap)
 - **Node.js**: 20+ with PM2, TypeScript, tsx, esbuild globally installed
 - **Claude CLI**: `~/.local/bin/claude` (authenticated with Claude Max)
 - **GitHub CLI**: `gh` (authenticated, can clone/push private repos)
+
+## Installation and Instances
+
+- **Repo**: `github.com/passonprobate-ship-it/SCWS` (public)
+- **One-line installer**: `curl -fsSL https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/scripts/bootstrap.sh | bash`
+- **Supported**: Ubuntu 20.04/22.04/24.04, amd64 or arm64
+- **Auto-update**: Hourly cron (`scripts/auto-update.sh`) — git fetch + ff-only pull, per-project restarts, never auto-restarts daemon
+- **Versioning**: `VERSION` file (semver) + `spawn-version.json` (version, gitHash, branch, buildDate) + `.spawn-instance.json` (gitignored, per-machine identity)
+- **Stamp**: `bash scripts/stamp-version.sh` after bumping VERSION, then tag + push
+- **Daemon source**: TypeScript source is built off-instance into `daemon/dist/index.cjs` + `dashboard.html`. Only the built artifacts ship.
 
 ## Architecture
 
@@ -39,7 +49,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 └── logs/
 ```
 
-**Source code** (development, not on Pi):
+**Daemon source** (built off-instance — only `dist/` ships):
 ```
 SPAWN/
 ├── shared/schema.ts     ← Drizzle ORM schema (8 tables)
@@ -116,12 +126,7 @@ This playbook contains step-by-step recipes with exact API payloads, nginx templ
 - **Dashboard editing guide** (variable names in the minified bundle)
 - **Troubleshooting** commands
 
-**Critical steps agents commonly miss:**
-1. Registering the project card via `POST /api/projects` (without this, the project is invisible in the dashboard)
-2. PATCHing the project to set `status`, `gitRepo`, `deployTargets` (without this, dashboard tabs don't work)
-3. Writing the nginx config and reloading nginx (without this, the project isn't accessible via the web)
-4. Writing a project CLAUDE.md (without this, future AI sessions don't know what's there)
-5. Running `pm2 save` (without this, the project won't survive a reboot)
+Also see the **Project Creation Checklist** section below for the condensed step-by-step.
 
 ## Code Conventions
 
@@ -131,6 +136,47 @@ This playbook contains step-by-step recipes with exact API payloads, nginx templ
 - Shell commands: `child_process.execFile` (not `exec`) for safety
 - Dashboard: vanilla JS, `api()` helper for authenticated fetch
 - Paths: always absolute (`/var/www/scws/...`), never relative
+
+## Shell and Environment Gotchas
+
+- **`printf` over `echo -n`**: `echo -n` is unreliable in non-interactive shells. Always use `printf`.
+- **Bearer tokens in curl**: Single-quote the `-H` value — double quotes can strip the variable. Example: `curl -H 'Authorization: Bearer '"$TOKEN"''`
+- **SSH after VPS create**: Allow 15–30s delay after a VPS reports "active" before SSH will accept connections.
+- **`crontab -l` under `pipefail`**: Fails if sudo emits warnings. Append `|| true` when checking existing crontabs.
+- **Bun**: Installed to `~/.bun/bin/bun` — not in PATH by default. Use full path or `source ~/.bashrc`.
+
+## Security Patterns
+
+- **`timingSafeEqual`**: Crashes if buffers differ in length. Always guard with a `Buffer.byteLength` check first.
+- **Never expose secrets** via API responses, logs, or error messages.
+- **SSE auth**: Use `fetch()` with an `Authorization` header. Never pass tokens as `?token=` query params.
+- **Rate limiting**: Apply `express-rate-limit` on auth endpoints and sensitive routes.
+- **Input validation**: Enforce max lengths, regex for addresses/identifiers, NaN checks on numeric inputs.
+- **Security headers**: Use `helmet` middleware.
+- **Behind nginx**: Set `app.set("trust proxy", 1)` so Express sees real client IPs.
+
+## Project Creation Checklist
+
+Every new project must complete ALL of these steps:
+
+1. Create directory: `projects/<name>/`
+2. Write code, install deps, create `.env` with `PORT=<port>` and `BASE_URL=/<name>`
+3. PM2 start with heap cap: `pm2 start ... --name <name> --node-args="--max-old-space-size=<MB>" --max-memory-restart <MB>M`
+4. Write nginx config to `nginx/projects/<name>.conf` + `sudo nginx -s reload`
+5. Register in daemon: `POST /api/projects` with `{ name, port, framework, description }`
+6. PATCH project: set `status=running`, `gitRepo`, `gitBranch`, `deployTargets`
+7. Write a `projects/<name>/CLAUDE.md` so future sessions know what's there
+8. `pm2 save` — persist across reboots
+9. Git commit + push to monorepo
+
+## VPS Deployment Patterns
+
+- **Deploy tooling**: `projects/spawn-vps/` — `deploy.sh`, `package.sh`, `config.sh`
+- **Memory scaling**: Auto-scales PM2 heap caps based on VPS RAM (1GB VPS gets smaller caps than 8GB Pi)
+- **hostname**: After `hostnamectl set-hostname`, also update `/etc/hosts` (127.0.1.1 line)
+- **Schema push**: Bootstrap creates the database but NOT tables — run `npx drizzle-kit push` after first deploy
+- **npm install**: Must run on target to rebuild native modules (node-pty, etc.) for target arch
+- **pg_hba.conf**: Change `peer` to `md5` for app users if connecting via TCP with password
 
 ## Daemon Restart Rules
 
@@ -166,7 +212,8 @@ This playbook contains step-by-step recipes with exact API payloads, nginx templ
 1. **Be autonomous.** Don't ask permission to write files or run commands. Just do it.
 2. **Be thorough.** After making changes, verify they work. Check logs. Curl endpoints. Run builds.
 3. **Be safe.** Use `execFile` not `exec`. Validate inputs. Don't expose secrets in logs or responses.
-4. **Be efficient.** The Pi has 8GB RAM and an SD card. Don't install unnecessary packages. Keep builds lean.
+4. **Be efficient.** Resources vary by instance (Pi 8GB, VPS 1GB, etc.). Don't install unnecessary packages. Keep builds lean.
 5. **Leave things running.** After you build something, make sure PM2 is managing it and `pm2 save` persists it across reboots.
 6. **Document your work.** Update the project's CLAUDE.md so your future self (or another Claude session) knows what's there.
 7. **Don't restart the daemon.** Project work never requires a daemon restart. Never run `pm2 restart all` — always restart individual projects by name. See "Daemon Restart Rules" above.
+8. **Save your plan before work.** Before non-trivial tasks, save the plan to spawn-mcp (`spawn_remember` key `active-task-{project}`) with steps and status. Update after milestones. Mark complete or paused when done. This ensures session disconnects don't lose progress.
