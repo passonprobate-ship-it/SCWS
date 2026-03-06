@@ -321,7 +321,7 @@ $.use((t,e,r)=>{let n=Date.now();e.on("finish",()=>{t.path.startsWith("/health")
       status: "complete", required: true
     });
 
-    // Step 2: Claude CLI
+    // Step 2: Claude CLI or OpenCode
     let claudeCliStatus = "pending";
     try {
       const claudePath = _path.join(_home, ".local/bin/claude");
@@ -332,13 +332,20 @@ $.use((t,e,r)=>{let n=Date.now();e.on("finish",()=>{t.path.startsWith("/health")
         claudeCliStatus = "complete";
       }
     } catch {}
+    // Check for OpenCode as alternative
+    if (claudeCliStatus === "pending") {
+      try {
+        await _execAsync("which", ["opencode"], { timeout: 5000 });
+        claudeCliStatus = "complete";
+      } catch {}
+    }
     // Check persisted state as fallback
     if (claudeCliStatus === "pending") {
       const saved = await w.getConfig("onboard-claude-cli");
       if (saved === "installed") claudeCliStatus = "complete";
     }
     steps.push({
-      id: 2, name: "claude-cli", label: "Claude Code CLI",
+      id: 2, name: "claude-cli", label: "AI Coding Agent",
       status: claudeCliStatus, required: true
     });
 
@@ -1719,6 +1726,16 @@ $.post("/api/system/shutdown",D("Shutdown system",async(req,res)=>{
   S("System shutdown requested via dashboard","system");
   res.json({ok:true,message:"Shutting down..."});
   setTimeout(()=>{_ef("sudo",["shutdown","now"],{timeout:5e3},()=>{})},1e3);
+}));
+
+$.get("/api/system/timezone",D("Get timezone",async(req,res)=>{
+  try{const{stdout}=await _ex("timedatectl",["show","--property=Timezone","--value"],{timeout:5e3});res.json({timezone:stdout.trim()})}catch(err){res.status(500).json({error:err.message||String(err)})}
+}));
+
+$.post("/api/system/timezone",D("Set timezone",async(req,res)=>{
+  const tz=req.body&&req.body.timezone;
+  if(!tz||typeof tz!=="string"||!/^[A-Za-z_\/+-]+$/.test(tz)){return res.status(400).json({error:"Invalid timezone"})}
+  try{await _ex("sudo",["timedatectl","set-timezone",tz],{timeout:5e3});await w.logActivity({action:"system_timezone_change",details:`Timezone changed to ${tz}`});S(`Timezone changed to ${tz}`,"system");res.json({ok:true,timezone:tz})}catch(err){res.status(500).json({error:err.message||String(err)})}
 }));
 
 S("System quick action routes registered","startup");
