@@ -430,6 +430,7 @@ DATABASE_URL=postgresql://scws:${SPAWN_DB_PASSWORD}@localhost:5432/scws_daemon
 PORT=5020
 DAEMON_URL=http://localhost:4000
 DASHBOARD_TOKEN=${DASHBOARD_TOKEN}
+AUTH_TOKEN=${DASHBOARD_TOKEN}
 MCPENVEOF
   chmod 600 "$MCP_DIR/.env"
   chown "${SPAWN_USER}:${SPAWN_USER}" "$MCP_DIR/.env"
