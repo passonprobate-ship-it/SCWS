@@ -54,20 +54,17 @@ warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 
 banner() {
-  printf "\n${CYAN}"
-  printf "       _______________________________________________\n"
-  printf "      |                                               |\n"
-  printf "      |      ${BOLD}┌─────────────────────────────┐${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}│  ┌──┐   ┌──┐   ┌──┐   ┌──┐ │${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}│  │${GREEN}▓▓${NC}${CYAN}${BOLD}│   │${GREEN}▓▓${NC}${CYAN}${BOLD}│   │  │   │  │ │${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}│  └──┘   └──┘   └──┘   └──┘ │${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}│         ╔══════════╗         │${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}│         ║${GREEN} ▓▓▓▓▓▓▓▓ ${NC}${CYAN}${BOLD}║         │${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}│         ╚══════════╝         │${NC}${CYAN}      |\n"
-  printf "      |      ${BOLD}└──────────────┬──┬─────────────┘${NC}${CYAN}      |\n"
-  printf "      |_________________________|__|________________|\n"
-  printf "                                |  |\n"
-  printf "${NC}\n"
+  printf "\n"
+  printf "${CYAN}            .-----------------------------.${NC}\n"
+  printf "${CYAN}            |  ${GREEN}[]${NC}${CYAN}  ${GREEN}[]${NC}${CYAN}          []    [] |${NC}\n"
+  printf "${CYAN}            |         .----------.        |${NC}\n"
+  printf "${CYAN}            |         | ${GREEN}==========${NC}${CYAN} |        |${NC}\n"
+  printf "${CYAN}            |         '----------'        |${NC}\n"
+  printf "${CYAN}            '--------------.---.----------'${NC}\n"
+  printf "${CYAN}                           |   |${NC}\n"
+  printf "${CYAN}                       .---'   '---.${NC}\n"
+  printf "${CYAN}                       '----._.----'${NC}\n"
+  printf "\n"
   printf "${BOLD}${CYAN}"
   printf '   ███████╗██████╗  █████╗ ██╗    ██╗███╗   ██╗\n'
   printf '   ██╔════╝██╔══██╗██╔══██╗██║    ██║████╗  ██║\n'
@@ -453,33 +450,33 @@ ELAPSED_SEC=$(( ELAPSED % 60 ))
 printf "\n"
 if $HEALTH_OK; then
   printf "${GREEN}${BOLD}"
-  printf '   ╔═══════════════════════════════════════════════════╗\n'
-  printf '   ║                                                   ║\n'
-  printf '   ║           ┌───────┐                               ║\n'
-  printf '   ║           │ ◉   ◉ │    SPAWN IS ALIVE!            ║\n'
-  printf '   ║           │  ───  │    Installed in %dm %02ds        ║\n' "$ELAPSED_MIN" "$ELAPSED_SEC"
-  printf '   ║           └───┬───┘                               ║\n'
-  printf '   ║            ┌──┴──┐     Your autonomous server     ║\n'
-  printf '   ║            │ ▓▓▓ │     is ready to build.         ║\n'
-  printf '   ║            └──┬──┘                                ║\n'
-  printf '   ║              ╱ ╲                                  ║\n'
-  printf '   ║                                                   ║\n'
-  printf '   ╚═══════════════════════════════════════════════════╝\n'
+  printf '   .----------------------------------------------------.\n'
+  printf '   |                                                    |\n'
+  printf '   |           .-------.                                |\n'
+  printf '   |           | O   O |    SPAWN IS ALIVE!             |\n'
+  printf '   |           |  ---  |    Installed in %dm %02ds         |\n' "$ELAPSED_MIN" "$ELAPSED_SEC"
+  printf '   |           '"'"'---+---'"'"'                                |\n'
+  printf '   |            .--+---.    Your autonomous server      |\n'
+  printf '   |            | === |     is ready to build.          |\n'
+  printf '   |            '"'"'--+--'"'"'                                 |\n'
+  printf '   |              / \\                                   |\n'
+  printf '   |                                                    |\n'
+  printf '   '"'"'----------------------------------------------------'"'"'\n'
   printf "${NC}\n"
 else
   printf "${YELLOW}${BOLD}"
-  printf '   ╔═══════════════════════════════════════════════════╗\n'
-  printf '   ║                                                   ║\n'
-  printf '   ║           ┌───────┐                               ║\n'
-  printf '   ║           │ ◉   ◉ │    SPAWN INSTALLED            ║\n'
-  printf '   ║           │  ~~~  │    Health check failed        ║\n'
-  printf '   ║           └───┬───┘    Completed in %dm %02ds       ║\n' "$ELAPSED_MIN" "$ELAPSED_SEC"
-  printf '   ║            ┌──┴──┐                                ║\n'
-  printf '   ║            │ ▓▓▓ │     Check the logs below.      ║\n'
-  printf '   ║            └──┬──┘                                ║\n'
-  printf '   ║              ╱ ╲                                  ║\n'
-  printf '   ║                                                   ║\n'
-  printf '   ╚═══════════════════════════════════════════════════╝\n'
+  printf '   .----------------------------------------------------.\n'
+  printf '   |                                                    |\n'
+  printf '   |           .-------.                                |\n'
+  printf '   |           | O   O |    SPAWN INSTALLED             |\n'
+  printf '   |           |  ~~~  |    Health check failed         |\n'
+  printf '   |           '"'"'---+---'"'"'    Completed in %dm %02ds        |\n' "$ELAPSED_MIN" "$ELAPSED_SEC"
+  printf '   |            .--+---.                                |\n'
+  printf '   |            | === |     Check the logs below.       |\n'
+  printf '   |            '"'"'--+--'"'"'                                 |\n'
+  printf '   |              / \\                                   |\n'
+  printf '   |                                                    |\n'
+  printf '   '"'"'----------------------------------------------------'"'"'\n'
   printf "${NC}\n"
   printf "  Check logs: ${CYAN}sudo -u $SPAWN_USER pm2 logs scws-daemon --lines 30${NC}\n\n"
 fi
