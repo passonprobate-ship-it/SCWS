@@ -532,6 +532,11 @@ MCPJSON
       printf "  ${DIM}config from ~/.claude/settings.json into opencode.json in your project root.${RESET}\n"
     fi
 
+    printf "\n  ${DIM}Project Playbook: /var/www/scws/docs/PROJECT-PLAYBOOK.md${RESET}\n"
+    printf "  ${DIM}This file teaches any AI agent how to create projects, register dashboard${RESET}\n"
+    printf "  ${DIM}cards, configure nginx, PM2, Tailscale Funnel, and more. It is referenced${RESET}\n"
+    printf "  ${DIM}automatically from CLAUDE.md (and AGENTS.md for OpenCode).${RESET}\n"
+
     return 0
   fi
 

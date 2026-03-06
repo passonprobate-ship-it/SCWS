@@ -2070,6 +2070,7 @@ function renderProjectCards() {
           : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); quickAction('${p.name}','start')">▶ Start</button>`}
         <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','build')">Build</button>
         <button class="btn btn-sm" onclick="event.stopPropagation(); openProjectInEditor('${p.name}')">Edit</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); exportProject('${p.name}')">Export</button>
         <button class="btn btn-sm btn-claude" onclick="event.stopPropagation(); openClaudeSession('${p.name}')">Claude</button>
       </div>
     </div>`;
@@ -2089,6 +2090,31 @@ async function quickAction(name, action) {
     loadProjects();
   } catch (err) {
     toast(`Failed: ${err.message}`, "error");
+  }
+}
+
+async function exportProject(name) {
+  toast(`Exporting ${name}...`, "info");
+  try {
+    const resp = await fetch(`/api/projects/${name}/export`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      throw new Error(err.error || "Export failed");
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name + ".zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`${name}.zip downloaded`, "success");
+  } catch (err) {
+    toast(`Export failed: ${err.message}`, "error");
   }
 }
 

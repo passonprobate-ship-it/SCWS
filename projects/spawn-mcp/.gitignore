@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+
+# Include pre-built dist (needed by installer — no build step on target)
+!dist/

@@ -43,7 +43,10 @@ done
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 
-TOTAL_STEPS=13
+TOTAL_STEPS=15
+# Steps: preflight, secrets, clone, bootstrap, daemon-deps, .env, ecosystem,
+#        schema, ownership, start-daemon, spawn-mcp, agent-settings,
+#        mcp-card (no step call), auto-update, stamp-version, healthcheck
 CURRENT_STEP=0
 step() {
   CURRENT_STEP=$((CURRENT_STEP + 1))
@@ -200,6 +203,10 @@ fi
 git clone --branch "$BRANCH" "$REPO_URL" "$SCWS_ROOT"
 
 log "Repository cloned to $SCWS_ROOT"
+
+# Create AGENTS.md symlink for OpenCode compatibility
+# (OpenCode reads AGENTS.md the way Claude Code reads CLAUDE.md)
+ln -sf CLAUDE.md "$SCWS_ROOT/AGENTS.md" 2>/dev/null || true
 
 # ── 4. Run bootstrap ──────────────────────────────────────────────────────
 
@@ -406,7 +413,189 @@ sudo -u "$SPAWN_USER" pm2 save
 
 log "Daemon started via PM2"
 
-# ── 12. Install auto-update cron ───────────────────────────────────────────
+# ── 12. Install & start spawn-mcp ─────────────────────────────────────
+
+step "Installing spawn-mcp (AI agent bridge)..."
+
+MCP_DIR="$SCWS_ROOT/projects/spawn-mcp"
+
+if [[ -d "$MCP_DIR" && -f "$MCP_DIR/package.json" ]]; then
+  # Install dependencies
+  cd "$MCP_DIR"
+  sudo -u "$SPAWN_USER" npm install --omit=dev --no-audit --no-fund 2>&1 | tail -3
+
+  # Generate .env for spawn-mcp
+  cat > "$MCP_DIR/.env" <<MCPENVEOF
+DATABASE_URL=postgresql://scws:${SPAWN_DB_PASSWORD}@localhost:5432/scws_daemon
+PORT=5020
+DAEMON_URL=http://localhost:4000
+DASHBOARD_TOKEN=${DASHBOARD_TOKEN}
+MCPENVEOF
+  chmod 600 "$MCP_DIR/.env"
+  chown "${SPAWN_USER}:${SPAWN_USER}" "$MCP_DIR/.env"
+
+  # Start spawn-mcp via PM2 (if dist/index.cjs exists — it's pre-built in the repo)
+  if [[ -f "$MCP_DIR/dist/index.cjs" ]]; then
+    sudo -u "$SPAWN_USER" pm2 start "$MCP_DIR/dist/index.cjs" \
+      --name spawn-mcp \
+      --cwd "$MCP_DIR" \
+      --node-args="--env-file=.env --max-old-space-size=128" \
+      --max-memory-restart 150M
+    sudo -u "$SPAWN_USER" pm2 save
+    log "spawn-mcp started on port 5020"
+  else
+    warn "spawn-mcp dist/index.cjs not found — skipping PM2 start"
+  fi
+
+  # Write nginx config for spawn-mcp
+  cat > "$SCWS_ROOT/nginx/projects/spawn-mcp.conf" <<'MCPNGINXEOF'
+location /spawn-mcp/ {
+    proxy_pass http://127.0.0.1:5020/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 86400;
+    proxy_intercept_errors on;
+    error_page 502 503 504 = @project_down;
+}
+MCPNGINXEOF
+  nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || true
+
+  log "spawn-mcp installed and configured"
+else
+  warn "spawn-mcp project not found at $MCP_DIR — skipping"
+fi
+
+# ── 13. Configure AI agent settings ───────────────────────────────────
+
+step "Configuring AI agent settings (Claude Code + OpenCode)..."
+
+SPAWN_USER_HOME=$(eval echo "~${SPAWN_USER}")
+
+# Build the MCP server JSON config
+MCP_CONFIG=$(cat <<MCPCFG
+{
+  "type": "streamableHttp",
+  "url": "http://localhost:5020/mcp",
+  "headers": {
+    "Authorization": "Bearer ${DASHBOARD_TOKEN}"
+  }
+}
+MCPCFG
+)
+
+# ── Claude Code: ~/.claude/settings.json ──
+CLAUDE_DIR="${SPAWN_USER_HOME}/.claude"
+CLAUDE_SETTINGS="${CLAUDE_DIR}/settings.json"
+
+mkdir -p "$CLAUDE_DIR"
+
+if [[ -f "$CLAUDE_SETTINGS" ]] && command -v jq &>/dev/null; then
+  # Merge into existing settings
+  tmp_file=$(mktemp)
+  jq --argjson spawn "$MCP_CONFIG" '
+    .mcpServers.spawn = $spawn |
+    if .permissions == null then
+      .permissions = {
+        "allow": [
+          "Bash(pm2 *)",
+          "Bash(curl *)",
+          "Bash(git *)",
+          "Bash(npm *)",
+          "Bash(sudo nginx *)",
+          "Bash(sudo -u postgres *)"
+        ]
+      }
+    else . end
+  ' "$CLAUDE_SETTINGS" > "$tmp_file" 2>/dev/null
+
+  if [[ $? -eq 0 && -s "$tmp_file" ]]; then
+    mv "$tmp_file" "$CLAUDE_SETTINGS"
+    log "Merged spawn MCP into existing Claude settings"
+  else
+    rm -f "$tmp_file"
+    # Fall through to fresh write
+    CLAUDE_SETTINGS_NEEDS_FRESH=true
+  fi
+else
+  CLAUDE_SETTINGS_NEEDS_FRESH=true
+fi
+
+if [[ "${CLAUDE_SETTINGS_NEEDS_FRESH:-false}" == "true" || ! -f "$CLAUDE_SETTINGS" ]]; then
+  cat > "$CLAUDE_SETTINGS" <<SETTINGSJSON
+{
+  "mcpServers": {
+    "spawn": ${MCP_CONFIG}
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pm2 *)",
+      "Bash(curl *)",
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(sudo nginx *)",
+      "Bash(sudo -u postgres *)"
+    ]
+  }
+}
+SETTINGSJSON
+  log "Created Claude settings with spawn MCP server"
+fi
+
+chown -R "${SPAWN_USER}:${SPAWN_USER}" "$CLAUDE_DIR"
+
+# ── OpenCode: project-level opencode.json ──
+OPENCODE_CFG="$SCWS_ROOT/opencode.json"
+cat > "$OPENCODE_CFG" <<OPENCODEJSON
+{
+  "mcpServers": {
+    "spawn": ${MCP_CONFIG}
+  }
+}
+OPENCODEJSON
+chown "${SPAWN_USER}:${SPAWN_USER}" "$OPENCODE_CFG"
+log "Created opencode.json for OpenCode compatibility"
+
+log "AI agent settings configured — no manual onboarding needed"
+
+# ── 14. Register spawn-mcp project card ───────────────────────────────────
+
+# Wait for daemon to be ready before registering
+sleep 2
+for i in 1 2 3; do
+  curl -sf http://localhost:4000/health >/dev/null 2>&1 && break
+  sleep 2
+done
+
+# Register spawn-mcp as a project card in the daemon (if not already there)
+MCP_EXISTS=$(curl -sf -H "Authorization: Bearer ${DASHBOARD_TOKEN}" \
+  http://localhost:4000/api/projects/spawn-mcp 2>/dev/null | grep -c '"name"' || true)
+
+if [[ "$MCP_EXISTS" -eq 0 ]]; then
+  curl -sf -X POST http://localhost:4000/api/projects \
+    -H "Authorization: Bearer ${DASHBOARD_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "spawn-mcp",
+      "displayName": "SPAWN MCP",
+      "framework": "express",
+      "description": "Local MCP server — gives AI agents native tool access to SPAWN"
+    }' >/dev/null 2>&1 || true
+
+  # Patch to set running status and port
+  curl -sf -X PATCH http://localhost:4000/api/projects/spawn-mcp \
+    -H "Authorization: Bearer ${DASHBOARD_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{"status": "running", "port": 5020}' >/dev/null 2>&1 || true
+
+  log "spawn-mcp project card registered in dashboard"
+fi
+
+# ── 15. Install auto-update cron ──────────────────────────────────────────
 
 step "Installing auto-update cron..."
 
@@ -418,14 +607,14 @@ printf '%s\n%s\n' "$EXISTING_CRON" "$AUTO_UPDATE_CRON" | sudo -u "$SPAWN_USER" c
 
 log "Auto-update cron installed (every 5 minutes)"
 
-# ── 13. Stamp version ──────────────────────────────────────────────────────
+# ── 16. Stamp version ──────────────────────────────────────────────────────
 
 step "Stamping version..."
 if [[ -f "$SCWS_ROOT/scripts/stamp-version.sh" ]]; then
   bash "$SCWS_ROOT/scripts/stamp-version.sh" --deploy-method=install 2>/dev/null || true
 fi
 
-# ── 14. Health check ───────────────────────────────────────────────────────
+# ── 17. Health check ───────────────────────────────────────────────────────
 
 step "Running health check..."
 
@@ -440,7 +629,7 @@ for i in 1 2 3 4 5; do
   sleep 2
 done
 
-# ── 15. Print summary ──────────────────────────────────────────────────────
+# ── 18. Print summary ──────────────────────────────────────────────────────
 
 INSTALL_END=$(date +%s)
 ELAPSED=$(( INSTALL_END - INSTALL_START ))
@@ -517,13 +706,18 @@ chown "${SPAWN_USER}:${SPAWN_USER}" "$CREDS_FILE"
 
 printf "  ${BOLD}Next steps:${NC}\n"
 printf "    1. Open the dashboard: ${CYAN}${BASE_URL}${NC}\n"
-printf "    2. Run onboarding (Claude CLI, auth, GitHub):\n"
+printf "    2. Install an AI coding agent (if not already installed):\n"
+printf "       ${CYAN}Claude Code:${NC} https://docs.anthropic.com/claude-code\n"
+printf "       ${CYAN}OpenCode:${NC}    curl -fsSL https://opencode.ai/install | bash\n"
+printf "    3. Launch the agent from ${CYAN}${SCWS_ROOT}${NC} and start building!\n"
+printf "       The spawn MCP server is pre-configured — no setup needed.\n"
 if $IS_PI; then
+  printf "    ${DIM}Optional: Run full onboarding (GitHub auth, etc):${NC}\n"
   printf "       ${CYAN}sudo -u $SPAWN_USER bash $SCWS_ROOT/projects/spawn-pi/onboard.sh${NC}\n"
 else
+  printf "    ${DIM}Optional: Run full onboarding (GitHub auth, etc):${NC}\n"
   printf "       ${CYAN}sudo -u $SPAWN_USER bash $SCWS_ROOT/projects/spawn-vps/onboard.sh${NC}\n"
 fi
-printf "    3. Start building! Open the Terminal page in the dashboard.\n"
 printf "\n"
 printf "  ${BOLD}Useful commands:${NC}\n"
 printf "    ${CYAN}sudo -u $SPAWN_USER pm2 status${NC}           # Process status\n"

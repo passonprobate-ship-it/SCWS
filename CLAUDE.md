@@ -95,25 +95,33 @@ Per-project databases are created on demand: `postgresql://scws:<password>@local
 - **4000**: SPAWN daemon (fixed — do not change)
 - **5001–5099**: Hosted projects (auto-assigned by daemon, sequential)
 
-## What You Can Do
+## Project Playbook (REQUIRED READING)
 
-### Create a project from scratch
-Write code files → install deps → build → start PM2 process → generate nginx config → it's live.
+**Before creating, modifying, or deleting any project, read `/var/www/scws/docs/PROJECT-PLAYBOOK.md`.**
 
-### Import from GitHub
-`gh repo clone <url> /var/www/scws/projects/<name>` → detect framework → install → build → start.
+This playbook contains step-by-step recipes with exact API payloads, nginx templates, PM2 commands, and verification steps for every operation you need to perform. It covers:
 
-### Modify a running project
-Edit files → rebuild → `pm2 restart <name>` → done. nginx config persists.
+- **Recipe 1**: Create a project from scratch (10-step checklist with exact curl commands)
+- **Recipe 2**: Create a database for a project
+- **Recipe 3**: Enable Tailscale Funnel (public internet access)
+- **Recipe 4**: Modify a running project
+- **Recipe 5**: Delete a project
+- **Recipe 6**: Deploy to a remote VPS
+- **Recipe 7**: Import from GitHub
+- **Recipe 8**: Export a project as .zip
+- Full **Daemon API Reference** (every endpoint, method, and payload)
+- Full **Database Schema** (every column in the projects table)
+- **nginx config template** (exact proxy_pass pattern)
+- **PM2 conventions** (heap caps, memory restart thresholds)
+- **Dashboard editing guide** (variable names in the minified bundle)
+- **Troubleshooting** commands
 
-### Create databases for projects
-`sudo -u postgres psql -c "CREATE DATABASE <name> OWNER scws;"` — then add `DATABASE_URL` to the project's `.env`.
-
-### Deploy projects to external servers
-Projects can have deploy targets (VPS, other Pis). Build locally, SCP the bundle, restart remote PM2.
-
-### Fix broken things
-Read PM2 logs (`pm2 logs <name>`), check nginx (`sudo nginx -t`), inspect DB (`psql`), read error output, fix and redeploy.
+**Critical steps agents commonly miss:**
+1. Registering the project card via `POST /api/projects` (without this, the project is invisible in the dashboard)
+2. PATCHing the project to set `status`, `gitRepo`, `deployTargets` (without this, dashboard tabs don't work)
+3. Writing the nginx config and reloading nginx (without this, the project isn't accessible via the web)
+4. Writing a project CLAUDE.md (without this, future AI sessions don't know what's there)
+5. Running `pm2 save` (without this, the project won't survive a reboot)
 
 ## Code Conventions
 
