@@ -211,7 +211,16 @@ step_2_claude_cli() {
       printf "  ${DIM}want to try SPAWN without any cost.${RESET}\n\n"
       printf "  ${CYAN}Installing OpenCode...${RESET}\n\n"
       if curl -fsSL https://opencode.ai/install | bash; then
-        export PATH="$HOME/.local/bin:$PATH"
+        # OpenCode installs to ~/.opencode/bin — add to PATH
+        export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+        # Persist in .bashrc if not already there
+        if ! grep -q '.opencode/bin' "$HOME/.bashrc" 2>/dev/null; then
+          printf '\nexport PATH="$HOME/.opencode/bin:$PATH"\n' >> "$HOME/.bashrc"
+        fi
+        # Symlink to /usr/local/bin for all users
+        if [[ -x "$HOME/.opencode/bin/opencode" ]]; then
+          sudo ln -sf "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode 2>/dev/null || true
+        fi
         if command -v opencode &>/dev/null; then
           success_msg "OpenCode installed successfully"
           update_state "onboard-claude-cli" "installed"

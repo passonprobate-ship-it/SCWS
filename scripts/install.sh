@@ -561,6 +561,20 @@ OPENCODEJSON
 chown "${SPAWN_USER}:${SPAWN_USER}" "$OPENCODE_CFG"
 log "Created opencode.json for OpenCode compatibility"
 
+# ── Fix OpenCode PATH if installed ──
+# OpenCode installs to ~/.opencode/bin which isn't in PATH by default
+OPENCODE_BIN="${SPAWN_USER_HOME}/.opencode/bin/opencode"
+if [[ -x "$OPENCODE_BIN" ]]; then
+  ln -sf "$OPENCODE_BIN" /usr/local/bin/opencode 2>/dev/null || true
+  # Add to user's .bashrc if not already there
+  BASHRC="${SPAWN_USER_HOME}/.bashrc"
+  if ! grep -q '.opencode/bin' "$BASHRC" 2>/dev/null; then
+    printf '\nexport PATH="$HOME/.opencode/bin:$PATH"\n' >> "$BASHRC"
+    chown "${SPAWN_USER}:${SPAWN_USER}" "$BASHRC"
+  fi
+  log "OpenCode PATH configured (/usr/local/bin/opencode)"
+fi
+
 log "AI agent settings configured — no manual onboarding needed"
 
 # ── 14. Register spawn-mcp project card ───────────────────────────────────
