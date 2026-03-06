@@ -305,6 +305,11 @@ server {
     }
 
     include /var/www/scws/nginx/projects/*.conf;
+
+    location @project_down {
+        default_type application/json;
+        return 503 '{"error":"Service unavailable","message":"This project is not running. Start it from the SPAWN dashboard."}';
+    }
 }
 NGINXEOF
 
