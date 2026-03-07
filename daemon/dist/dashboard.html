@@ -40,7 +40,7 @@
       padding: 20px 0; display: flex; flex-direction: column; flex-shrink: 0;
     }
     .sidebar-logo { padding: 0 20px 20px; font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
-    .sidebar-nav { flex: 1; }
+    .sidebar-nav { flex: 1; overflow-y: auto; }
     .nav-item {
       display: flex; align-items: center; gap: 10px; padding: 10px 20px;
       color: var(--text-muted); cursor: pointer; font-size: 13px; transition: all .15s;
@@ -53,6 +53,18 @@
       position: absolute; right: 12px; width: 8px; height: 8px; border-radius: 50%;
       background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite;
     }
+    .nav-group-label {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 20px; margin-top: 8px; font-size: 10px; font-weight: 600;
+      color: var(--text-dim); letter-spacing: 1.5px; text-transform: uppercase;
+      cursor: pointer; user-select: none; transition: color .15s;
+    }
+    .nav-group-label:hover { color: var(--text-muted); }
+    .nav-group-label .nav-group-chevron { font-size: 8px; transition: transform .2s; }
+    .nav-group-label .nav-group-chevron.collapsed { transform: rotate(-90deg); }
+    .nav-group-items { overflow: hidden; transition: max-height .2s ease; }
+    .nav-group-items.collapsed { max-height: 0 !important; }
+    .nav-separator { height: 1px; background: var(--border); margin: 8px 20px; }
     .sidebar-footer { padding: 12px 20px; font-size: 10px; color: var(--text-dim); border-top: 1px solid var(--border); }
     .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; max-height: 100vh; }
     .main-scroll { flex: 1; padding: 24px 32px; overflow-y: auto; }
@@ -749,6 +761,8 @@
       .sidebar-logo { font-size: 10px; padding: 0 8px 16px; text-align: center; }
       .nav-item span:not(.nav-icon) { display: none; }
       .nav-item { justify-content: center; padding: 10px; }
+      .nav-group-label { display: none; }
+      .nav-separator { margin: 4px 8px; }
       .main-scroll { padding: 16px; }
       .project-grid { grid-template-columns: 1fr; }
       .modal { min-width: unset; margin: 16px; }
@@ -947,18 +961,13 @@
   <nav class="sidebar">
     <div class="sidebar-logo"><svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin-right:6px;"><rect x="6" y="8" width="20" height="16" rx="2" fill="currentColor" opacity="0.15"/><rect x="6" y="8" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="12" width="4" height="4" rx="1" fill="currentColor"/><rect x="18" y="12" width="4" height="4" rx="1" fill="currentColor"/><rect x="11" y="19" width="10" height="2" rx="1" fill="currentColor"/><rect x="14" y="3" width="4" height="6" rx="1" fill="currentColor"/><rect x="1" y="11" width="5" height="7" rx="1" fill="currentColor" opacity="0.6"/><rect x="26" y="11" width="5" height="7" rx="1" fill="currentColor" opacity="0.6"/></svg>SPAWN</div>
     <div class="sidebar-nav">
-      <div class="nav-item active" data-page="help">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><text x="8" y="11.5" text-anchor="middle" font-size="10" font-weight="bold" fill="currentColor">?</text></svg></span> <span>Help</span>
-      </div>
-      <div class="nav-item" data-page="system">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>System</span>
+      <!-- ── Core ── -->
+      <div class="nav-item active" data-page="projects">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg></span> <span>Projects</span>
       </div>
       <div class="nav-item" data-page="claude">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polyline points="2,5 7,8 2,11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="8" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Terminal</span>
         <span id="nav-claude-badge" class="nav-badge" style="display:none;"></span>
-      </div>
-      <div class="nav-item" data-page="projects">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg></span> <span>Projects</span>
       </div>
       <div class="nav-item" data-page="sessions">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M4 12c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
@@ -971,30 +980,57 @@
       <div class="nav-item" data-page="editor">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 2h8v12H3V4l2-2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5 2v2H3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 7h5M6 9.5h4M6 12h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span> <span>Editor</span>
       </div>
-      <div class="nav-item" data-page="activity">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polyline points="1,8 4,8 6,3 8,13 10,5 12,8 15,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span> <span>Activity</span>
+
+      <!-- ── Monitor ── -->
+      <div class="nav-separator"></div>
+      <div class="nav-group-label" onclick="toggleNavGroup('monitor')">
+        <span>Monitor</span>
+        <span class="nav-group-chevron" id="nav-chevron-monitor">&#9660;</span>
       </div>
-      <div class="nav-item" data-page="mcp">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="7" x2="10" y2="5" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="9" x2="10" y2="11" stroke="currentColor" stroke-width="1.5"/></svg></span> <span>MCP</span>
-        <span id="nav-mcp-badge" class="nav-badge" style="display:none;"></span>
+      <div class="nav-group-items" id="nav-group-monitor">
+        <div class="nav-item" data-page="system">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>System</span>
+        </div>
+        <div class="nav-item" data-page="activity">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polyline points="1,8 4,8 6,3 8,13 10,5 12,8 15,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span> <span>Activity</span>
+        </div>
       </div>
-      <div class="nav-item" data-page="connections">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 6l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Connections</span>
+
+      <!-- ── Infrastructure ── -->
+      <div class="nav-separator"></div>
+      <div class="nav-group-label" onclick="toggleNavGroup('infra')">
+        <span>Infrastructure</span>
+        <span class="nav-group-chevron" id="nav-chevron-infra">&#9660;</span>
       </div>
-      <div class="nav-item" data-page="channels">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 5a1 1 0 0 1 0 6M3 5a1 1 0 0 0 0 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M5 5V3a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4" y="5" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="11" x2="8" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Channels</span>
-        <span id="nav-channels-badge" class="nav-badge" style="display:none;"></span>
+      <div class="nav-group-items" id="nav-group-infra">
+        <div class="nav-item" data-page="mcp">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="7" x2="10" y2="5" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="9" x2="10" y2="11" stroke="currentColor" stroke-width="1.5"/></svg></span> <span>MCP</span>
+          <span id="nav-mcp-badge" class="nav-badge" style="display:none;"></span>
+        </div>
+        <div class="nav-item" data-page="connections">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 6l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Connections</span>
+        </div>
+        <div class="nav-item" data-page="channels">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 5a1 1 0 0 1 0 6M3 5a1 1 0 0 0 0 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M5 5V3a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4" y="5" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="11" x2="8" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Channels</span>
+          <span id="nav-channels-badge" class="nav-badge" style="display:none;"></span>
+        </div>
+        <div class="nav-item" data-page="cortex">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><line x1="8" y1="2" x2="8" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="11" x2="8" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="8" x2="5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Cortex</span>
+        </div>
+        <div class="nav-item" data-page="vps">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="4" r=".7" fill="currentColor"/><circle cx="7.5" cy="4" r=".7" fill="currentColor"/><rect x="3" y="6.5" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="8.5" r=".7" fill="currentColor"/><circle cx="7.5" cy="8.5" r=".7" fill="currentColor"/><rect x="3" y="11" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="13" r=".7" fill="currentColor"/><circle cx="7.5" cy="13" r=".7" fill="currentColor"/></svg></span> <span>VPS</span>
+        </div>
+        <div class="nav-item" data-page="funnel">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><ellipse cx="8" cy="8" rx="3" ry="6" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.3"/></svg></span>
+          <span>Funnel</span>
+          <span id="nav-funnel-badge" style="display:none;"></span>
+        </div>
       </div>
-      <div class="nav-item" data-page="cortex">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><line x1="8" y1="2" x2="8" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="11" x2="8" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="8" x2="5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> <span>Cortex</span>
-      </div>
-      <div class="nav-item" data-page="vps">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="4" r=".7" fill="currentColor"/><circle cx="7.5" cy="4" r=".7" fill="currentColor"/><rect x="3" y="6.5" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="8.5" r=".7" fill="currentColor"/><circle cx="7.5" cy="8.5" r=".7" fill="currentColor"/><rect x="3" y="11" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="13" r=".7" fill="currentColor"/><circle cx="7.5" cy="13" r=".7" fill="currentColor"/></svg></span> <span>VPS</span>
-      </div>
-      <div class="nav-item" data-page="funnel">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><ellipse cx="8" cy="8" rx="3" ry="6" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.3"/></svg></span>
-        <span>Funnel</span>
-        <span id="nav-funnel-badge" style="display:none;"></span>
+
+      <!-- ── Bottom ── -->
+      <div class="nav-separator"></div>
+      <div class="nav-item" data-page="help">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><text x="8" y="11.5" text-anchor="middle" font-size="10" font-weight="bold" fill="currentColor">?</text></svg></span> <span>Help</span>
       </div>
       <div class="nav-item" data-page="setup">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 4.5l1.5 1.5M10 10l1.5 1.5M4.5 11.5l1.5-1.5M10 6l1.5-1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
@@ -1955,9 +1991,9 @@ function initApp() {
       if (setupNav) setupNav.style.display = "";
     } else {
       if (setupNav) setupNav.style.display = "none";
-      navigate("help");
+      navigate("projects");
     }
-  }).catch(() => { navigate("help"); });
+  }).catch(() => { navigate("projects"); });
 }
 
 // ── Navigation ────────────────────────────────────────────────────
@@ -1969,7 +2005,7 @@ function navigate(page, data) {
   const pageEl = document.getElementById(`page-${page}`);
   const navEl = document.querySelector(`.sidebar .nav-item[data-page="${page}"]`);
   if (pageEl) pageEl.classList.add("active");
-  if (navEl) navEl.classList.add("active");
+  if (navEl) { navEl.classList.add("active"); expandNavGroupFor(page); }
 
   // Cleanup live logs when leaving project detail
   if (page !== "project-detail" && liveLogSource) {
@@ -1998,6 +2034,52 @@ function navigate(page, data) {
 document.querySelectorAll(".sidebar .nav-item[data-page]").forEach(el => {
   el.addEventListener("click", () => navigate(el.dataset.page));
 });
+
+// ── Nav Groups (collapsible) ──────────────────────────────────────
+function toggleNavGroup(group) {
+  const items = document.getElementById("nav-group-" + group);
+  const chevron = document.getElementById("nav-chevron-" + group);
+  if (!items) return;
+  const collapsed = !items.classList.contains("collapsed");
+  items.classList.toggle("collapsed", collapsed);
+  if (chevron) chevron.classList.toggle("collapsed", collapsed);
+  if (!collapsed) items.style.maxHeight = items.scrollHeight + "px";
+  try { localStorage.setItem("nav-group-" + group, collapsed ? "0" : "1"); } catch {}
+}
+
+function expandNavGroupFor(page) {
+  // Find which group contains this page's nav item
+  const navEl = document.querySelector('.sidebar .nav-item[data-page="' + page + '"]');
+  if (!navEl) return;
+  const group = navEl.closest(".nav-group-items");
+  if (group && group.classList.contains("collapsed")) {
+    group.classList.remove("collapsed");
+    group.style.maxHeight = group.scrollHeight + "px";
+    const id = group.id.replace("nav-group-", "");
+    const chevron = document.getElementById("nav-chevron-" + id);
+    if (chevron) chevron.classList.remove("collapsed");
+    try { localStorage.setItem("nav-group-" + id, "1"); } catch {}
+  }
+}
+
+// Restore collapsed state from localStorage; default infra to collapsed
+(function initNavGroups() {
+  ["monitor", "infra"].forEach(group => {
+    const saved = localStorage.getItem("nav-group-" + group);
+    // Default: monitor open, infra collapsed
+    const shouldOpen = saved !== null ? saved === "1" : group !== "infra";
+    const items = document.getElementById("nav-group-" + group);
+    const chevron = document.getElementById("nav-chevron-" + group);
+    if (!items) return;
+    if (shouldOpen) {
+      items.classList.remove("collapsed");
+      items.style.maxHeight = items.scrollHeight + "px";
+    } else {
+      items.classList.add("collapsed");
+      if (chevron) chevron.classList.add("collapsed");
+    }
+  });
+})();
 
 // ── Tabs ──────────────────────────────────────────────────────────
 function switchTab(el, tabId) {
