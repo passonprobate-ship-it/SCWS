@@ -55,7 +55,6 @@ The bootstrap auto-detects Pi RAM and scales accordingly:
 
 | RAM | Swap | PG Connections | Daemon Heap | PM2 Restart |
 |-----|------|----------------|-------------|-------------|
-| <2GB | 2G | 15 | 96MB | 128M |
 | 2GB | 2G | 20 | 128MB | 160M |
 | 4GB | 4G | 30 | 192MB | 200M |
 | 8GB | 4G | 30 | 192MB | 200M |

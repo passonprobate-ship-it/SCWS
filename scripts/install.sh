@@ -138,10 +138,10 @@ if [[ "$DISK_FREE_MB" -lt 2000 ]]; then
 fi
 log "  Disk: ${DISK_FREE_MB}MB free"
 
-# Check RAM (warn if under 512MB)
+# Check RAM (need at least 2GB)
 RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
-if [[ "$RAM_MB" -lt 512 ]]; then
-  err "Not enough RAM. Need at least 512MB, have ${RAM_MB}MB."
+if [[ "$RAM_MB" -lt 1800 ]]; then
+  err "Not enough RAM. Need at least 2GB, have ${RAM_MB}MB."
   exit 1
 fi
 log "  RAM: ${RAM_MB}MB"

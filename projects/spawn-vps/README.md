@@ -29,8 +29,7 @@ We recommend **[Vultr](https://www.vultr.com/?ref=9876074-9J)** as the preferred
 
 | Plan | Specs | Price | Best for |
 |------|-------|-------|----------|
-| `vc2-1c-1gb` | 1 vCPU, 1GB RAM, 25GB SSD | $6/mo | Minimal SPAWN — dashboard + 1-2 projects |
-| `vc2-1c-2gb` | 1 vCPU, 2GB RAM, 55GB SSD | $10/mo | **Recommended** — comfortable for AI sessions |
+| `vc2-1c-2gb` | 1 vCPU, 2GB RAM, 55GB SSD | $10/mo | **Minimum** — dashboard + 1-2 projects |
 | `vc2-2c-4gb` | 2 vCPU, 4GB RAM, 80GB SSD | $20/mo | Multiple projects + Claude Code sessions |
 
 Using the links above helps support SPAWN development at no extra cost to you.
@@ -157,8 +156,6 @@ The bootstrap auto-detects VPS RAM and scales accordingly:
 
 | RAM | Swap | PG Connections | Daemon Heap | PM2 Restart |
 |-----|------|---------------|-------------|-------------|
-| < 1GB | 1GB | 15 | 96MB | 128M |
-| 1-2GB | 1GB | 20 | 128MB | 160M |
 | 2-4GB | 2GB | 30 | 192MB | 200M |
 | 4-8GB | 4GB | 40 | 192MB | 200M |
 | 8GB+ | 4GB | 50 | 256MB | 300M |
@@ -255,7 +252,7 @@ curl -s http://localhost:4000/health
 ## Requirements
 
 - **VPS**: Ubuntu 24.04 LTS (amd64 or arm64)
-- **RAM**: 512MB minimum, 1GB+ recommended
+- **RAM**: 2GB minimum (4GB+ recommended)
 - **Disk**: 10GB minimum
 - **Network**: Public IP or domain
 - **Local**: SSH access to VPS, SPAWN repo at `/var/www/scws`, built daemon bundle in `daemon/dist/`

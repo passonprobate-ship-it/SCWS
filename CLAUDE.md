@@ -172,7 +172,7 @@ Every new project must complete ALL of these steps:
 ## VPS Deployment Patterns
 
 - **Deploy tooling**: `projects/spawn-vps/` — `deploy.sh`, `package.sh`, `config.sh`
-- **Memory scaling**: Auto-scales PM2 heap caps based on VPS RAM (1GB VPS gets smaller caps than 8GB Pi)
+- **Memory scaling**: Auto-scales PM2 heap caps based on VPS RAM (2GB VPS gets smaller caps than 8GB Pi)
 - **hostname**: After `hostnamectl set-hostname`, also update `/etc/hosts` (127.0.1.1 line)
 - **Schema push**: Bootstrap creates the database but NOT tables — run `npx drizzle-kit push` after first deploy
 - **npm install**: Must run on target to rebuild native modules (node-pty, etc.) for target arch
@@ -212,7 +212,7 @@ Every new project must complete ALL of these steps:
 1. **Be autonomous.** Don't ask permission to write files or run commands. Just do it.
 2. **Be thorough.** After making changes, verify they work. Check logs. Curl endpoints. Run builds.
 3. **Be safe.** Use `execFile` not `exec`. Validate inputs. Don't expose secrets in logs or responses.
-4. **Be efficient.** Resources vary by instance (Pi 8GB, VPS 1GB, etc.). Don't install unnecessary packages. Keep builds lean.
+4. **Be efficient.** Resources vary by instance (Pi 8GB, VPS 2GB, etc.). Don't install unnecessary packages. Keep builds lean.
 5. **Leave things running.** After you build something, make sure PM2 is managing it and `pm2 save` persists it across reboots.
 6. **Document your work.** Update the project's CLAUDE.md so your future self (or another Claude session) knows what's there.
 7. **Don't restart the daemon.** Project work never requires a daemon restart. Never run `pm2 restart all` — always restart individual projects by name. See "Daemon Restart Rules" above.

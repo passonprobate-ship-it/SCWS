@@ -93,7 +93,6 @@ Memory management is critical on Pi (2-8GB RAM). Defense-in-depth:
 Pi-specific scaling (RAM-based):
 | RAM  | Swap | PG Conns | Heap   | PM2 Restart |
 |------|------|----------|--------|-------------|
-| <2GB | 2G   | 15       | 96MB   | 128M        |
 | 2GB  | 2G   | 20       | 128MB  | 160M        |
 | 4GB  | 4G   | 30       | 192MB  | 200M        |
 | 8GB  | 4G   | 30       | 192MB  | 200M        |

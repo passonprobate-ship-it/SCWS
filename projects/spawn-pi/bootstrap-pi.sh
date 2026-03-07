@@ -116,11 +116,8 @@ log "Starting SPAWN Pi bootstrap on $(hostname) — arch=$ARCH — $(date)"
 RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
 log "Detected ${RAM_MB}MB RAM"
 
-if (( RAM_MB < 2048 )); then
-  # 1GB Pi (Pi Zero 2, Pi 3)
-  SWAP_SIZE="2G"; PG_CONNS=15; DAEMON_HEAP=96; PM2_RESTART="128M"
-elif (( RAM_MB < 4096 )); then
-  # 2GB Pi
+if (( RAM_MB < 4096 )); then
+  # 2GB Pi (minimum supported)
   SWAP_SIZE="2G"; PG_CONNS=20; DAEMON_HEAP=128; PM2_RESTART="160M"
 elif (( RAM_MB < 8192 )); then
   # 4GB Pi
