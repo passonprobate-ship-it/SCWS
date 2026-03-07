@@ -244,6 +244,11 @@
     /* ── Claude Sessions ──────────────────────── */
     .btn-claude { border-color: var(--accent); color: var(--accent); }
     .btn-claude:hover { background: rgba(0,212,255,.1); }
+    .btn-opencode { border-color: #a78bfa; color: #a78bfa; }
+    .btn-opencode:hover { background: rgba(167,139,250,.1); }
+    .tool-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; margin-right: 4px; }
+    .tool-badge-claude { background: rgba(0,212,255,.2); color: var(--accent); }
+    .tool-badge-opencode { background: rgba(167,139,250,.2); color: #a78bfa; }
     .claude-session-tabs {
       display: flex; gap: 4px; padding: 0 0 12px; border-bottom: 1px solid var(--border);
       flex-shrink: 0; overflow-x: auto; align-items: center;
@@ -2072,6 +2077,7 @@ function renderProjectCards() {
         <button class="btn btn-sm" onclick="event.stopPropagation(); openProjectInEditor('${p.name}')">Edit</button>
         <button class="btn btn-sm" onclick="event.stopPropagation(); exportProject('${p.name}')">Export</button>
         <button class="btn btn-sm btn-claude" onclick="event.stopPropagation(); openClaudeSession('${p.name}')">Claude</button>
+        ${aiToolsAvail.opencode ? `<button class="btn btn-sm btn-opencode" onclick="event.stopPropagation(); openOpenCodeSession('${p.name}')">OpenCode</button>` : ''}
       </div>
     </div>`;
   }).join("");
@@ -2122,8 +2128,17 @@ function navigateClaude(projectName) {
   openClaudeSession(projectName);
 }
 
+// ── AI Tools Availability ─────────────────────────────────────────
+let aiToolsAvail = { claude: true, opencode: false };
+(async function fetchAiTools() {
+  try {
+    const r = await fetch("/api/ai-tools");
+    if (r.ok) aiToolsAvail = await r.json();
+  } catch {}
+})();
+
 // ── Claude Sessions Management ────────────────────────────────────
-const claudeTerminals = {};      // { sessionId: { term, ws, fitAddon, projectName, container } }
+const claudeTerminals = {};      // { sessionId: { term, ws, fitAddon, projectName, container, tool } }
 let activeClaudeSessionId = null;
 const MAX_CLAUDE_UI_SESSIONS = 4;
 
@@ -2294,10 +2309,13 @@ function setupSessionClipboard(cterm, container, getWs) {
   }, true);
 }
 
-function openClaudeSession(projectName) {
-  // Check if session for this project already exists → switch to it
+function openClaudeSession(projectName) { _openAISession(projectName, "claude"); }
+function openOpenCodeSession(projectName) { _openAISession(projectName, "opencode"); }
+
+function _openAISession(projectName, tool) {
+  // Check if session for this project+tool already exists → switch to it
   for (const [sid, s] of Object.entries(claudeTerminals)) {
-    if (s.projectName === projectName) {
+    if (s.projectName === projectName && (s.tool || "claude") === tool) {
       navigate("sessions");
       switchClaudeSession(sid);
       return;
@@ -2305,15 +2323,16 @@ function openClaudeSession(projectName) {
   }
   // Check session count limit
   if (Object.keys(claudeTerminals).length >= MAX_CLAUDE_UI_SESSIONS) {
-    toast("Max " + MAX_CLAUDE_UI_SESSIONS + " Claude sessions allowed", "warning");
+    toast("Max " + MAX_CLAUDE_UI_SESSIONS + " sessions allowed", "warning");
     navigate("sessions");
     return;
   }
   navigate("sessions");
-  createClaudeTerminal(projectName);
+  createClaudeTerminal(projectName, tool);
 }
 
-function createClaudeTerminal(projectName) {
+function createClaudeTerminal(projectName, tool) {
+  tool = tool || "claude";
   const wrapper = document.getElementById("claude-terminals-wrapper");
   const emptyState = document.getElementById("sessions-empty-state");
   if (emptyState) emptyState.style.display = "none";
@@ -2356,18 +2375,20 @@ function createClaudeTerminal(projectName) {
   cterm.open(container);
   fitAddon.fit();
 
-  cterm.writeln("\x1b[36m[Connecting Claude to " + projectName + "...]\x1b[0m");
+  const toolLabel = tool === "opencode" ? "OpenCode" : "Claude";
+  cterm.writeln("\x1b[36m[Connecting " + toolLabel + " to " + projectName + "...]\x1b[0m");
 
   // Connect WebSocket
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = proto + "//" + location.host + "/api/claude-terminal?token=" + encodeURIComponent(token)
     + "&project=" + encodeURIComponent(projectName)
+    + "&tool=" + encodeURIComponent(tool)
     + "&cols=" + cterm.cols + "&rows=" + cterm.rows;
   const ws = new WebSocket(url);
 
   // Placeholder entry until we get session ID
   const tmpId = "_pending_" + Date.now();
-  const entry = { term: cterm, ws, fitAddon, projectName, container, sessionId: null };
+  const entry = { term: cterm, ws, fitAddon, projectName, container, sessionId: null, tool };
 
   ws.onopen = () => {
     cterm.writeln("\x1b[32m[Connected]\x1b[0m");
@@ -2385,6 +2406,7 @@ function createClaudeTerminal(projectName) {
         // Server assigned session ID
         const sid = msg.id;
         entry.sessionId = sid;
+        if (msg.tool) entry.tool = msg.tool;
         // Move from tmpId to real sid in claudeTerminals
         if (claudeTerminals[tmpId]) delete claudeTerminals[tmpId];
         claudeTerminals[sid] = entry;
@@ -2577,11 +2599,15 @@ function renderClaudeSessionTabs() {
     const isActive = sid === activeClaudeSessionId;
     const isDisconnected = !!s.disconnected;
     const name = s.projectName || "unknown";
+    const sTool = s.tool || "claude";
+    const toolBadge = sTool === "opencode"
+      ? '<span class="tool-badge tool-badge-opencode">OC</span>'
+      : '<span class="tool-badge tool-badge-claude">CL</span>';
     const classes = 'claude-session-tab' + (isActive ? ' active' : '') + (isDisconnected ? ' disconnected' : '');
     const dot = '<span class="tab-status-dot ' + (isDisconnected ? 'disconnected' : 'connected') + '"></span> ';
     const safeSid = escapeHtml(sid);
     return '<button class="' + classes + '" onclick="switchClaudeSession(\'' + safeSid + '\')">'
-      + dot + escapeHtml(name)
+      + dot + toolBadge + escapeHtml(name)
       + ' <span class="tab-close" onclick="event.stopPropagation(); killClaudeSessionUI(\'' + safeSid + '\')">&times;</span>'
       + '</button>';
   }).join("");
@@ -2609,7 +2635,7 @@ async function initSessionsPage() {
         // Reattach to orphaned sessions
         for (const s of orphaned) {
           if (Object.keys(claudeTerminals).length >= MAX_CLAUDE_UI_SESSIONS) break;
-          reattachClaudeSession(s.id, s.projectName);
+          reattachClaudeSession(s.id, s.projectName, s.tool);
         }
       }
     }
@@ -2634,7 +2660,8 @@ async function initSessionsPage() {
   renderClaudeSessionTabs();
 }
 
-function reattachClaudeSession(sessionId, projectName) {
+function reattachClaudeSession(sessionId, projectName, tool) {
+  tool = tool || "claude";
   const wrapper = document.getElementById("claude-terminals-wrapper");
   const emptyState = document.getElementById("sessions-empty-state");
   if (emptyState) emptyState.style.display = "none";
@@ -2667,14 +2694,15 @@ function reattachClaudeSession(sessionId, projectName) {
   if (typeof WebLinksAddon !== "undefined") cterm.loadAddon(new WebLinksAddon.WebLinksAddon());
   cterm.open(container);
   fitAddon.fit();
-  cterm.writeln("\x1b[36m[Reattaching to " + projectName + " session " + sessionId + "...]\x1b[0m");
+  const toolLabel = tool === "opencode" ? "OpenCode" : "Claude";
+  cterm.writeln("\x1b[36m[Reattaching " + toolLabel + " to " + projectName + " session " + sessionId + "...]\x1b[0m");
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = proto + "//" + location.host + "/api/claude-terminal?token=" + encodeURIComponent(token)
     + "&session=" + encodeURIComponent(sessionId)
     + "&cols=" + cterm.cols + "&rows=" + cterm.rows;
   const ws = new WebSocket(url);
-  const entry = { term: cterm, ws, fitAddon, projectName, container, sessionId };
+  const entry = { term: cterm, ws, fitAddon, projectName, container, sessionId, tool };
 
   ws.onopen = () => { cterm.writeln("\x1b[32m[Reattached]\x1b[0m"); };
   ws.onmessage = (e) => {
@@ -2684,6 +2712,7 @@ function reattachClaudeSession(sessionId, projectName) {
       else if (msg.type === "replay") { cterm.clear(); cterm.write(msg.data); }
       else if (msg.type === "session") {
         entry.sessionId = msg.id;
+        if (msg.tool) entry.tool = msg.tool;
         renderClaudeSessionTabs();
         updateSessionsBadge();
       } else if (msg.type === "exit") {
@@ -2784,11 +2813,11 @@ function renderSessionsOverview(data) {
       html += `<div class="session-row">
         <span class="session-dot ${dotClass}"></span>
         <div class="session-info">
-          <span class="session-name">${escapeHtml(s.id)}</span> — ${escapeHtml(s.projectName)}
+          <span class="session-name">${escapeHtml(s.id)}</span> — ${s.tool === "opencode" ? '<span class="tool-badge tool-badge-opencode">OC</span>' : '<span class="tool-badge tool-badge-claude">CL</span>'}${escapeHtml(s.projectName)}
           <div class="session-meta">${statusText} · ${uptime}${s.pid ? " · PID " + s.pid : ""}</div>
         </div>
         <div class="session-actions">
-          ${!s.attached ? `<button class="btn btn-sm" onclick="reattachFromOverview('${escapeHtml(s.id)}','${escapeHtml(s.projectName)}')" style="background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green);">Reconnect</button>` : ""}
+          ${!s.attached ? `<button class="btn btn-sm" onclick="reattachFromOverview('${escapeHtml(s.id)}','${escapeHtml(s.projectName)}','${escapeHtml(s.tool||"claude")}')" style="background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green);">Reconnect</button>` : ""}
           <button class="btn btn-sm btn-danger" onclick="killSessionFromOverview('${escapeHtml(s.id)}','claude')">Kill</button>
         </div>
       </div>`;
@@ -2848,8 +2877,8 @@ async function killSessionFromOverview(id, type) {
   }
 }
 
-function reattachFromOverview(id, project) {
-  reattachClaudeSession(id, project);
+function reattachFromOverview(id, project, tool) {
+  reattachClaudeSession(id, project, tool);
   refreshSessionsOverview();
 }
 
@@ -5118,6 +5147,7 @@ function getCommands() {
     cmds.push({ name: `Stop: ${p.displayName}`, action: () => quickAction(p.name, "stop") });
     cmds.push({ name: `Build: ${p.displayName}`, action: () => quickAction(p.name, "build") });
     cmds.push({ name: `Claude Session: ${p.displayName}`, action: () => openClaudeSession(p.name) });
+    if (aiToolsAvail.opencode) cmds.push({ name: `OpenCode Session: ${p.displayName}`, action: () => openOpenCodeSession(p.name) });
     cmds.push({ name: `Open: ${p.displayName}`, action: () => window.open(`/${p.name}/`, "_blank") });
   });
   return cmds;
