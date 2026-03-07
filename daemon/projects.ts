@@ -1,0 +1,801 @@
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { randomBytes } from "crypto";
+import { mkdir, rm, writeFile, readFile } from "fs/promises";
+import { existsSync } from "fs";
+import { storage } from "./storage.js";
+import { log } from "./logger.js";
+import { pm2Start, pm2Stop, pm2Restart, pm2Delete, pm2Logs } from "./pm2.js";
+import { addProjectNginx, removeProjectNginx } from "./nginx.js";
+import { notify } from "./notifications.js";
+import { watchdogTrackStart, watchdogTrackDelete } from "./watchdog.js";
+import type { Project } from "../shared/schema.js";
+
+const execFileAsync = promisify(execFile);
+
+const PROJECTS_DIR = "/var/www/scws/projects";
+const SCWS_DB_PASSWORD = process.env.SCWS_DB_PASSWORD;
+
+function requireDbPassword(): string {
+  if (!SCWS_DB_PASSWORD) throw new Error("SCWS_DB_PASSWORD env var is not set — cannot create database URLs");
+  return SCWS_DB_PASSWORD;
+}
+
+function validateDbName(name: string): void {
+  if (!/^[a-z0-9_]+$/.test(name)) throw new Error(`Invalid database name: ${name}`);
+}
+
+interface CreateProjectOpts {
+  name: string;
+  displayName: string;
+  description?: string;
+  framework?: string;
+  gitRepo?: string;
+  needsDb?: boolean;
+}
+
+// ── Scaffolds ─────────────────────────────────────────────────────
+
+function expressScaffold(name: string, port: number): Record<string, string> {
+  return {
+    "package.json": JSON.stringify({
+      name,
+      version: "1.0.0",
+      type: "module",
+      scripts: {
+        dev: "tsx src/index.ts",
+        build: "tsx script/build.ts",
+        start: "node dist/index.js",
+      },
+      dependencies: { express: "^5.0.1" },
+      devDependencies: {
+        "@types/express": "^5.0.0",
+        "@types/node": "^20.19.0",
+        esbuild: "^0.25.0",
+        tsx: "^4.20.5",
+        typescript: "5.6.3",
+      },
+    }, null, 2),
+    "tsconfig.json": JSON.stringify({
+      compilerOptions: {
+        target: "ES2022",
+        module: "ESNext",
+        moduleResolution: "bundler",
+        esModuleInterop: true,
+        strict: true,
+        skipLibCheck: true,
+        outDir: "dist",
+        noEmit: true,
+        lib: ["ES2022"],
+        types: ["node"],
+      },
+      include: ["src/**/*.ts"],
+    }, null, 2),
+    "src/index.ts": `import express from "express";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = typeof __filename !== "undefined" ? dirname(__filename) : dirname(fileURLToPath(import.meta.url));
+const app = express();
+const PORT = parseInt(process.env.PORT || "${port}", 10);
+
+// Serve static files from public/ (create this folder for CSS, images, JS)
+app.use(express.static(join(__dirname, "..", "public")));
+
+app.get("/", (_req, res) => {
+  res.send(\`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${name}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0f; color: #e0e0e8; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { text-align: center; padding: 48px; border: 1px solid #1e1e2e; border-radius: 16px; background: #12121a; max-width: 480px; }
+    h1 { font-size: 2rem; font-weight: 600; margin-bottom: 8px; background: linear-gradient(135deg, #7c6aef, #4ecdc4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .sub { font-size: 0.85rem; color: #6b6b80; margin-bottom: 24px; }
+    .hint { font-size: 0.8rem; color: #4a4a5e; padding: 12px; background: #0d0d14; border-radius: 8px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${name}</h1>
+    <p class="sub">Running on SPAWN &middot; port \${PORT}</p>
+    <p class="hint">Edit src/index.ts to start building</p>
+  </div>
+</body>
+</html>\`);
+});
+
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.listen(PORT, () => {
+  console.log(\`${name} listening on port \${PORT}\`);
+});
+`,
+    "script/build.ts": `import { build } from "esbuild";
+await build({
+  entryPoints: ["src/index.ts"],
+  platform: "node",
+  bundle: true,
+  format: "esm",
+  outfile: "dist/index.js",
+  external: ["express"],
+  minify: true,
+});
+console.log("Build complete: dist/index.js");
+`,
+    "CLAUDE.md": `# ${name}
+
+Express project running on SPAWN (Self-Programming Autonomous Web Node).
+
+## Environment
+- **Port**: ${port}
+- **Base URL**: /${name}
+- **Directory**: /var/www/scws/projects/${name}
+- **Process**: PM2 name \`${name}\`
+- **Database**: Check .env for DATABASE_URL (if provisioned)
+
+## Stack
+Express + TypeScript + esbuild. Build with \`node script/build.js\`, output to \`dist/index.js\`.
+
+## Key Files
+- \`src/index.ts\` \u2014 Express app entry point
+- \`script/build.js\` \u2014 esbuild bundler
+- \`.env\` \u2014 PORT, BASE_URL, DATABASE_URL
+
+## Rules
+- All routes must be relative to BASE_URL (/${name}/)
+- The app is reverse-proxied by nginx \u2014 don't handle SSL
+- After changes: build, then \`pm2 restart ${name}\`
+`,
+  };
+}
+
+function staticScaffold(name: string): Record<string, string> {
+  return {
+    "index.html": `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/${name}/">
+  <title>${name}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #0a0a0a; color: #fafafa; }
+    h1 { font-size: 2rem; font-weight: 300; }
+  </style>
+</head>
+<body>
+  <h1>${name}</h1>
+</body>
+</html>`,
+    "CLAUDE.md": `# ${name}
+
+Static site running on SPAWN (Self-Programming Autonomous Web Node).
+
+## Environment
+- **Served at**: /${name}/
+- **Directory**: /var/www/scws/projects/${name}
+- **Type**: Static HTML/CSS/JS (no build step, no server process)
+
+## Key Files
+- \`index.html\` \u2014 Entry point
+- All asset paths must be relative to \`/${name}/\`
+
+## Rules
+- Use \`<base href="/${name}/">\` in HTML head for correct relative paths
+- nginx serves files directly \u2014 no PM2 process needed
+`,
+  };
+}
+
+function nextScaffold(name: string, port: number): Record<string, string> {
+  return {
+    "package.json": JSON.stringify({
+      name,
+      version: "0.1.0",
+      private: true,
+      scripts: { dev: "next dev", build: "next build", start: "next start" },
+      dependencies: { next: "^16.1.6", react: "^19.2.3", "react-dom": "^19.2.3" },
+      devDependencies: { "@types/node": "^20", "@types/react": "^19", typescript: "^5" },
+    }, null, 2),
+    "next.config.ts": `import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = {\n  basePath: "/${name}",\n};\n\nexport default nextConfig;\n`,
+    "tsconfig.json": JSON.stringify({
+      compilerOptions: {
+        target: "ES2017", lib: ["dom", "dom.iterable", "esnext"], allowJs: true, skipLibCheck: true,
+        strict: true, noEmit: true, esModuleInterop: true, module: "esnext",
+        moduleResolution: "bundler", resolveJsonModule: true, isolatedModules: true,
+        jsx: "preserve", incremental: true, plugins: [{ name: "next" }],
+        paths: { "@/*": ["./src/*"] },
+      },
+      include: ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+      exclude: ["node_modules"],
+    }, null, 2),
+    "src/app/layout.tsx": `export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html lang="en"><body>{children}</body></html>;\n}\n`,
+    "src/app/page.tsx": `export default function Home() {\n  return <main><h1>${name}</h1><p>Running on SPAWN</p></main>;\n}\n`,
+    "CLAUDE.md": `# ${name}
+
+Next.js project running on SPAWN (Self-Programming Autonomous Web Node).
+
+## Environment
+- **Port**: ${port}
+- **Base path**: /${name}
+- **Directory**: /var/www/scws/projects/${name}
+- **Process**: PM2 name \`${name}\`
+- **Database**: Check .env for DATABASE_URL (if provisioned)
+
+## Stack
+Next.js 16 + React 19 + TypeScript. \`basePath: "/${name}"\` is set in next.config.ts.
+
+## Key Files
+- \`src/app/\` \u2014 App Router pages and layouts
+- \`next.config.ts\` \u2014 basePath and other config
+- \`.env\` \u2014 PORT, BASE_URL, AUTH_URL, DATABASE_URL
+
+## Rules
+- basePath is /${name} \u2014 all routes are relative to this
+- Build: \`npm run build\` (creates .next/), Start: \`npm run start\`
+- The app is reverse-proxied by nginx \u2014 don't handle SSL
+- After changes: \`npm run build\`, then \`pm2 restart ${name}\`
+`,
+  };
+}
+
+// ── Framework & DB Detection ─────────────────────────────────────
+
+export async function detectFramework(projectDir: string): Promise<string> {
+  const pkgPath = `${projectDir}/package.json`;
+  if (!existsSync(pkgPath)) {
+    return existsSync(`${projectDir}/index.html`) ? "static" : "express";
+  }
+  try {
+    const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    if (deps["next"]) return "next";
+    if (deps["express"] || deps["fastify"] || deps["koa"] || deps["hono"]) return "express";
+    if (deps["vite"] || deps["@vitejs/plugin-react"] || deps["react-scripts"]) return "static";
+    return "express";
+  } catch {
+    return "express";
+  }
+}
+
+export async function detectNeedsDb(projectDir: string): Promise<boolean> {
+  if (existsSync(`${projectDir}/drizzle.config.ts`) || existsSync(`${projectDir}/drizzle.config.js`)) return true;
+  if (existsSync(`${projectDir}/prisma/schema.prisma`)) return true;
+  const envExample = `${projectDir}/.env.example`;
+  if (existsSync(envExample)) {
+    const content = await readFile(envExample, "utf-8");
+    if (content.includes("DATABASE_URL")) return true;
+  }
+  return false;
+}
+
+async function injectNextBasePath(projectDir: string, name: string): Promise<void> {
+  const configFiles = ["next.config.ts", "next.config.js", "next.config.mjs"];
+  let configPath: string | null = null;
+  for (const f of configFiles) {
+    if (existsSync(`${projectDir}/${f}`)) {
+      configPath = `${projectDir}/${f}`;
+      break;
+    }
+  }
+
+  if (!configPath) {
+    await writeFile(`${projectDir}/next.config.ts`,
+      `import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = {\n  basePath: "/${name}",\n};\n\nexport default nextConfig;\n`
+    );
+    log(`Created next.config.ts with basePath: /${name}`, "project");
+    return;
+  }
+
+  let content = await readFile(configPath, "utf-8");
+
+  if (content.includes("basePath")) {
+    content = content.replace(/basePath:\s*["'][^"']*["']/, `basePath: "/${name}"`);
+  } else {
+    const typed = content.replace(
+      /const\s+\w+:\s*NextConfig\s*=\s*\{/,
+      `$&\n  basePath: "/${name}",`
+    );
+    if (typed !== content) {
+      content = typed;
+    } else {
+      content = content.replace(
+        /(export\s+default\s*\{|module\.exports\s*=\s*\{)/,
+        `$1\n  basePath: "/${name}",`
+      );
+    }
+  }
+
+  await writeFile(configPath, content, "utf-8");
+  log(`Injected basePath: /${name} into ${configPath}`, "project");
+}
+
+// ── Short Name Generation ────────────────────────────────────────
+
+export function generateShortName(repoUrl: string): string {
+  let name = repoUrl.split("/").pop() || "project";
+  name = name.replace(/\.git$/, "");
+  name = name.replace(/^(app\.|the-)/, "");
+  name = name.replace(/(\.(cloud|com|io|org|dev|app))$/i, "");
+  name = name.replace(/-(app|frontend|web|site|client|ui)$/i, "");
+  name = name.toLowerCase().replace(/\./g, "-").replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  if (name.length > 20) {
+    const parts = name.split("-");
+    name = parts.slice(0, 3).join("-");
+    if (name.length > 20) name = name.substring(0, 20).replace(/-$/, "");
+  }
+  return name || "project";
+}
+
+// ── Auto-Import from URL ─────────────────────────────────────────
+
+export async function importFromUrl(repoUrl: string): Promise<Project> {
+  if (!/^(https?:\/\/|git@[\w.-]+:)/.test(repoUrl)) {
+    throw new Error("Invalid repository URL — only https:// and git@host: protocols are allowed");
+  }
+
+  const baseName = generateShortName(repoUrl);
+  let name = baseName;
+  let suffix = 2;
+  while (await storage.getProject(name)) {
+    name = `${baseName}-${suffix++}`;
+  }
+
+  const projectDir = `${PROJECTS_DIR}/${name}`;
+  log(`Importing "${name}" from ${repoUrl}...`, "project");
+
+  await mkdir(projectDir, { recursive: true });
+  await execFileAsync("git", ["clone", repoUrl, projectDir], { timeout: 180_000 });
+  log(`Cloned ${repoUrl} \u2192 ${name}`, "project");
+
+  const framework = await detectFramework(projectDir);
+  log(`Detected framework: ${framework}`, "project");
+
+  const needsDb = await detectNeedsDb(projectDir);
+  const port = await storage.getNextPort();
+
+  let dbName: string | undefined;
+  if (needsDb) {
+    dbName = `${name.replace(/-/g, "_")}_db`;
+    validateDbName(dbName);
+    try {
+      await execFileAsync("sudo", ["-u", "postgres", "psql", "-c",
+        `CREATE DATABASE "${dbName}" OWNER scws;`], { timeout: 10_000 });
+      log(`Created database: ${dbName}`, "project");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("already exists")) throw err;
+    }
+  }
+
+  if (framework === "next") {
+    await injectNextBasePath(projectDir, name);
+  }
+
+  const envLines = [`PORT=${port}`, `BASE_URL=/${name}`, `NODE_ENV=production`];
+  if (dbName) {
+    envLines.push(`DATABASE_URL=postgresql://scws:${requireDbPassword()}@localhost:5432/${dbName}`);
+  }
+  if (framework === "next") {
+    envLines.push(`AUTH_SECRET=${randomBytes(32).toString("hex")}`);
+    const baseUrl = process.env.SCWS_BASE_URL || "http://localhost:4000";
+    envLines.push(`AUTH_URL=${baseUrl}/${name}`);
+    envLines.push(`NEXTAUTH_URL=${baseUrl}/${name}`);
+  }
+  await writeFile(`${projectDir}/.env`, envLines.join("\n") + "\n", "utf-8");
+
+  if (existsSync(`${projectDir}/package.json`)) {
+    log(`Installing dependencies for ${name}...`, "project");
+    const installEnv: Record<string, string | undefined> = { ...process.env, NODE_OPTIONS: "--max-old-space-size=512" };
+    delete installEnv.NODE_ENV;
+    await execFileAsync("npm", ["install"], {
+      cwd: projectDir,
+      timeout: 300_000,
+      env: installEnv,
+    });
+  }
+
+  let entryFile = "dist/index.js";
+  let buildCommand: string | null = "npm run build";
+  let startCommand: string | null = null;
+
+  if (framework === "next") {
+    entryFile = ".next/server.js";
+    startCommand = "npm start";
+  } else if (framework === "static") {
+    entryFile = "index.html";
+    buildCommand = null;
+    startCommand = null;
+  } else if (framework === "express") {
+    // Auto-detect existing build artifacts
+    if (existsSync(projectDir + "/dist/index.cjs")) entryFile = "dist/index.cjs";
+    else if (existsSync(projectDir + "/dist/server.cjs")) entryFile = "dist/server.cjs";
+    else if (existsSync(projectDir + "/dist/server.js")) entryFile = "dist/server.js";
+    else if (existsSync(projectDir + "/server/index.ts") && !existsSync(projectDir + "/dist/index.js")) {
+      entryFile = "server/index.ts";
+      buildCommand = null;
+      startCommand = "npx tsx server/index.ts";
+    } else if (existsSync(projectDir + "/src/index.ts") && !existsSync(projectDir + "/dist/index.js")) {
+      entryFile = "src/index.ts";
+      buildCommand = null;
+      startCommand = "npx tsx src/index.ts";
+    }
+  }
+
+  const displayName = repoUrl.split("/").pop()?.replace(/\.git$/, "") || name;
+
+  const project = await storage.createProject({
+    name,
+    displayName,
+    description: `Imported from ${repoUrl}`,
+    port,
+    status: "stopped",
+    framework,
+    gitRepo: repoUrl,
+    dbName: dbName || null,
+    entryFile,
+    buildCommand,
+    startCommand,
+    envVars: "{}",
+    deployTargets: "[]",
+  });
+
+  await addProjectNginx(name, port, framework);
+
+  await storage.logActivity({
+    projectId: project.id,
+    action: "imported",
+    details: `Auto-imported ${framework} project from ${repoUrl} on port ${port}`,
+  });
+
+  log(`Project "${name}" imported successfully`, "project");
+  return project;
+}
+
+// ── Create ────────────────────────────────────────────────────────
+
+export async function createProject(opts: CreateProjectOpts): Promise<Project> {
+  const { name, displayName, description, framework = "express", gitRepo, needsDb } = opts;
+
+  const existing = await storage.getProject(name);
+  if (existing) throw new Error(`Project "${name}" already exists`);
+
+  const port = await storage.getNextPort();
+  const projectDir = `${PROJECTS_DIR}/${name}`;
+
+  log(`Creating project "${name}" (${framework}, port ${port})`, "project");
+
+  await mkdir(projectDir, { recursive: true });
+
+  if (gitRepo) {
+    await execFileAsync("git", ["clone", gitRepo, projectDir], { timeout: 120_000 });
+    log(`Cloned ${gitRepo}`, "project");
+  } else {
+    let files: Record<string, string>;
+
+    switch (framework) {
+      case "static":
+        files = staticScaffold(name);
+        break;
+      case "next":
+        files = nextScaffold(name, port);
+        break;
+      case "express":
+      default:
+        files = expressScaffold(name, port);
+        break;
+    }
+
+    for (const [filePath, content] of Object.entries(files)) {
+      const fullPath = `${projectDir}/${filePath}`;
+      const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+      if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+      await writeFile(fullPath, content, "utf-8");
+    }
+  }
+
+  let dbName: string | undefined;
+  if (needsDb) {
+    dbName = `${name.replace(/-/g, "_")}_db`;
+    validateDbName(dbName);
+    try {
+      await execFileAsync("sudo", ["-u", "postgres", "psql", "-c",
+        `CREATE DATABASE "${dbName}" OWNER scws;`], { timeout: 10_000 });
+      log(`Created database: ${dbName}`, "project");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("already exists")) throw err;
+    }
+  }
+
+  const envLines = [
+    `PORT=${port}`,
+    `BASE_URL=/${name}`,
+    `NODE_ENV=production`,
+  ];
+  if (dbName) {
+    envLines.push(`DATABASE_URL=postgresql://scws:${requireDbPassword()}@localhost:5432/${dbName}`);
+  }
+  await writeFile(`${projectDir}/.env`, envLines.join("\n") + "\n", "utf-8");
+
+  if (framework !== "static" && existsSync(`${projectDir}/package.json`)) {
+    log(`Installing dependencies for ${name}...`, "project");
+    const installEnv = { ...process.env };
+    delete installEnv.NODE_ENV;
+    await execFileAsync("npm", ["install"], { cwd: projectDir, timeout: 300_000, env: installEnv });
+  }
+
+  let entryFile = "dist/index.js";
+  let buildCommand: string | undefined = "npm run build";
+  let startCommand: string | undefined;
+
+  if (framework === "next") {
+    entryFile = ".next/server.js";
+    startCommand = "npm start";
+  } else if (framework === "static") {
+    entryFile = "index.html";
+    buildCommand = undefined;
+    startCommand = undefined;
+  }
+
+  const project = await storage.createProject({
+    name,
+    displayName,
+    description: description || "",
+    port,
+    status: "stopped",
+    framework,
+    gitRepo: gitRepo || null,
+    dbName: dbName || null,
+    entryFile,
+    buildCommand: buildCommand || null,
+    startCommand: startCommand || null,
+    envVars: "{}",
+    deployTargets: "[]",
+  });
+
+  await addProjectNginx(name, port, framework);
+
+  await storage.logActivity({
+    projectId: project.id,
+    action: "created",
+    details: `Created ${framework} project "${displayName}" on port ${port}`,
+  });
+
+  log(`Project "${name}" created successfully`, "project");
+  return project;
+}
+
+// ── Ensure Project Exists (auto-create card) ─────────────────────
+
+export async function ensureProjectExists(name: string): Promise<Project> {
+  const projectDir = `${PROJECTS_DIR}/${name}`;
+  if (!existsSync(projectDir)) {
+    await mkdir(projectDir, { recursive: true });
+  }
+
+  const framework = await detectFramework(projectDir);
+
+  // Try to detect git repo
+  let gitRepo: string | null = null;
+  try {
+    const gitConfigPath = `${projectDir}/.git/config`;
+    if (existsSync(gitConfigPath)) {
+      const gitConfig = await readFile(gitConfigPath, "utf-8");
+      const match = gitConfig.match(/url\s*=\s*(.+)/);
+      if (match) gitRepo = match[1].trim();
+    }
+  } catch { /* ignore */ }
+
+  const port = await storage.getNextPort();
+  const displayName = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+  let project: Project;
+  try {
+    project = await storage.createProject({
+      name,
+      displayName,
+      description: "Auto-created when SPAWN started working on this project",
+      port,
+      status: "stopped",
+      framework,
+      gitRepo,
+      dbName: null,
+      entryFile: framework === "next" ? ".next/server.js" : framework === "static" ? "index.html" : "dist/index.js",
+      buildCommand: framework === "static" ? null : "npm run build",
+      startCommand: framework === "next" ? "npm start" : null,
+      envVars: "{}",
+      deployTargets: "[]",
+    });
+  } catch (err) {
+    // Race condition: project created between check and insert
+    const existing = await storage.getProject(name);
+    if (existing) return existing;
+    throw err;
+  }
+
+  try {
+    await addProjectNginx(name, port, framework);
+  } catch (err) {
+    log(`Warning: nginx setup failed for auto-created "${name}": ${err}`, "project");
+  }
+
+  await storage.logActivity({
+    projectId: project.id,
+    action: "auto_created",
+    details: `Auto-created ${framework} project card for "${name}" (port ${port})`,
+  });
+
+  log(`Auto-created project card for "${name}" (${framework}, port ${port})`, "project");
+  await notify("project", `Auto-created project card: ${name} (${framework}, port ${port})`);
+  return project;
+}
+
+// ── Start ─────────────────────────────────────────────────────────
+
+export async function startProject(name: string): Promise<void> {
+  const project = await storage.getProject(name);
+  if (!project) throw new Error(`Project "${name}" not found`);
+
+  const envVars = JSON.parse(project.envVars) as Record<string, string>;
+  if (project.dbName) {
+    envVars.DATABASE_URL = `postgresql://scws:${requireDbPassword()}@localhost:5432/${project.dbName}`;
+  }
+
+  await pm2Start(name, project.entryFile, project.port, envVars, project.startCommand);
+  watchdogTrackStart(name);
+  await storage.updateProject(name, { status: "running" });
+  await storage.logActivity({
+    projectId: project.id,
+    action: "started",
+    details: `Started on port ${project.port}`,
+  });
+  notify("project_started", `Project "${name}" started on port ${project.port}`).catch(() => {});
+}
+
+// ── Stop ──────────────────────────────────────────────────────────
+
+export async function stopProject(name: string): Promise<void> {
+  const project = await storage.getProject(name);
+  if (!project) throw new Error(`Project "${name}" not found`);
+
+  await pm2Stop(name);
+  await storage.updateProject(name, { status: "stopped" });
+  await storage.logActivity({
+    projectId: project.id,
+    action: "stopped",
+    details: "Stopped",
+  });
+  notify("project_stopped", `Project "${name}" stopped`).catch(() => {});
+}
+
+// ── Restart ───────────────────────────────────────────────────────
+
+export async function restartProject(name: string): Promise<void> {
+  const project = await storage.getProject(name);
+  if (!project) throw new Error(`Project "${name}" not found`);
+
+  await pm2Restart(name);
+  await storage.updateProject(name, { status: "running" });
+  await storage.logActivity({
+    projectId: project.id,
+    action: "restarted",
+    details: "Restarted",
+  });
+}
+
+// ── Build ─────────────────────────────────────────────────────────
+
+let _buildLock: string | null = null;
+
+export async function buildProject(name: string): Promise<{ output: string }> {
+  if (_buildLock) throw new Error(`Build already in progress for "${_buildLock}". Only one build at a time.`);
+  _buildLock = name;
+  try {
+    return await _buildProjectReal(name);
+  } finally {
+    _buildLock = null;
+  }
+}
+
+async function _buildProjectReal(name: string): Promise<{ output: string }> {
+  const project = await storage.getProject(name);
+  if (!project) throw new Error(`Project "${name}" not found`);
+  if (!project.buildCommand) throw new Error(`Project "${name}" has no build command`);
+
+  const projectDir = `${PROJECTS_DIR}/${name}`;
+  await storage.updateProject(name, { status: "building" });
+
+  try {
+    const { stdout, stderr } = await execFileAsync("bash", ["-c", project.buildCommand], {
+      cwd: projectDir,
+      timeout: 300_000,
+      env: { ...process.env, NODE_ENV: "production", NODE_OPTIONS: "--max-old-space-size=512" },
+    });
+
+    // Auto-detect entry file if default doesn't exist
+    if (project.entryFile === "dist/index.js" && existsSync(projectDir + "/dist/index.cjs")) {
+      await storage.updateProject(name, { entryFile: "dist/index.cjs" });
+    } else if (project.entryFile === "dist/index.js" && existsSync(projectDir + "/dist/server.cjs")) {
+      await storage.updateProject(name, { entryFile: "dist/server.cjs" });
+    } else if (project.entryFile === "dist/index.js" && !existsSync(projectDir + "/dist/index.js") && existsSync(projectDir + "/dist/server.js")) {
+      await storage.updateProject(name, { entryFile: "dist/server.js" });
+    }
+
+    await storage.updateProject(name, {
+      status: "stopped",
+      lastBuildAt: new Date(),
+    });
+    await storage.logActivity({
+      projectId: project.id,
+      action: "built",
+      details: "Build succeeded",
+    });
+    notify("build_succeeded", `Build succeeded for "${name}"`).catch(() => {});
+
+    const output = (stdout + "\n" + stderr).trim();
+    log(`Build completed for "${name}"`, "project");
+    return { output };
+  } catch (err: unknown) {
+    await storage.updateProject(name, { status: "error" });
+    const msg = err instanceof Error ? err.message : String(err);
+    await storage.logActivity({
+      projectId: project.id,
+      action: "build_failed",
+      details: msg,
+    });
+    notify("build_failed", `Build failed for "${name}": ${msg.substring(0, 200)}`).catch(() => {});
+    throw new Error(`Build failed: ${msg}`);
+  }
+}
+
+// ── Delete ────────────────────────────────────────────────────────
+
+export async function deleteProject(name: string): Promise<void> {
+  const project = await storage.getProject(name);
+  if (!project) throw new Error(`Project "${name}" not found`);
+
+  log(`Deleting project "${name}"...`, "project");
+  watchdogTrackDelete(name);
+
+  await pm2Delete(name);
+  await removeProjectNginx(name);
+
+  const projectDir = `${PROJECTS_DIR}/${name}`;
+  if (existsSync(projectDir)) {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+
+  if (project.dbName) {
+    try {
+      validateDbName(project.dbName);
+      await execFileAsync("sudo", ["-u", "postgres", "psql", "-c",
+        `DROP DATABASE IF EXISTS "${project.dbName}";`], { timeout: 10_000 });
+      log(`Dropped database: ${project.dbName}`, "project");
+    } catch (err: unknown) {
+      log(`Failed to drop database ${project.dbName}: ${err}`, "error");
+    }
+  }
+
+  await storage.deleteProject(name);
+  await storage.logActivity({
+    action: "deleted",
+    details: `Deleted project "${name}"`,
+  });
+
+  log(`Project "${name}" deleted`, "project");
+}
+
+// ── Logs ──────────────────────────────────────────────────────────
+
+export async function getProjectLogs(name: string, lines: number): Promise<string> {
+  const project = await storage.getProject(name);
+  if (!project) throw new Error(`Project "${name}" not found`);
+  return pm2Logs(name, lines);
+}
