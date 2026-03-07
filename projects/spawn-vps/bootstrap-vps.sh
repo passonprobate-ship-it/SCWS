@@ -104,7 +104,13 @@ usermod -aG sudo,adm "$SPAWN_USER" 2>/dev/null || true
 log "Adding APT repositories (arch=$ARCH)..."
 
 # Detect Ubuntu codename for APT repos
-UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || source /etc/os-release && echo "${VERSION_CODENAME:-noble}")
+if command -v lsb_release &>/dev/null; then
+  UBUNTU_CODENAME=$(lsb_release -cs)
+else
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  UBUNTU_CODENAME="${VERSION_CODENAME:-noble}"
+fi
 
 # NodeSource (Node.js 20.x)
 mkdir -p /usr/share/keyrings
@@ -398,7 +404,20 @@ log "Tuning PostgreSQL (max_connections=${PG_CONNS})..."
 PG_CONF=$(find /etc/postgresql -name postgresql.conf -type f 2>/dev/null | head -1)
 if [[ -n "$PG_CONF" ]]; then
   sed -i "s/^max_connections = .*/max_connections = ${PG_CONNS}/" "$PG_CONF"
+fi
+
+# ── 21b. PostgreSQL pg_hba.conf — enable TCP password auth ──────────────────
+log "Configuring pg_hba.conf for TCP password auth..."
+PG_HBA=$(find /etc/postgresql -name pg_hba.conf -type f 2>/dev/null | head -1)
+if [[ -n "$PG_HBA" ]]; then
+  # Change local (Unix socket) peer auth to scram-sha-256 for non-postgres users
+  # This allows the scws role to connect via both Unix socket and TCP with password
+  sed -i 's/^local\s\+all\s\+all\s\+peer$/local   all             all                                     scram-sha-256/' "$PG_HBA"
+  # Ensure IPv4 local connections use scram-sha-256 (usually already set, but be safe)
+  sed -i 's/^host\s\+all\s\+all\s\+127\.0\.0\.1\/32\s\+ident$/host    all             all             127.0.0.1\/32            scram-sha-256/' "$PG_HBA"
   systemctl restart postgresql
+else
+  warn "pg_hba.conf not found — daemon may fail to connect to PostgreSQL"
 fi
 
 # ── 22. SSL (conditional) ────────────────────────────────────────────────────

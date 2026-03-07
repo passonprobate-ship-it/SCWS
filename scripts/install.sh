@@ -612,7 +612,7 @@ AUTO_UPDATE_CRON="0 * * * * bash $SCWS_ROOT/scripts/auto-update.sh >> $SCWS_ROOT
 EXISTING_CRON=$(sudo -u "$SPAWN_USER" crontab -l 2>/dev/null | grep -v 'auto-update.sh' || true)
 printf '%s\n%s\n' "$EXISTING_CRON" "$AUTO_UPDATE_CRON" | sudo -u "$SPAWN_USER" crontab -
 
-log "Auto-update cron installed (every 5 minutes)"
+log "Auto-update cron installed (hourly)"
 
 # ── 16. Stamp version ──────────────────────────────────────────────────────
 
