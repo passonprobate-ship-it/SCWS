@@ -553,18 +553,20 @@ chown -R "${SPAWN_USER}:${SPAWN_USER}" "$CLAUDE_DIR"
 # An opencode.json in the project root uses a different schema (agent, mode, plugin)
 # and must NOT contain mcpServers (causes "Unrecognized key" error on startup).
 
-# ── Fix OpenCode PATH if installed ──
-# OpenCode installs to ~/.opencode/bin which isn't in PATH by default
+# ── Pre-configure OpenCode PATH ──
+# OpenCode installs to ~/.opencode/bin which isn't in PATH by default.
+# Add to .bashrc now so it's ready when the user installs OpenCode later.
+BASHRC="${SPAWN_USER_HOME}/.bashrc"
+if ! grep -q '.opencode/bin' "$BASHRC" 2>/dev/null; then
+  printf '\nexport PATH="$HOME/.opencode/bin:$PATH"\n' >> "$BASHRC"
+  chown "${SPAWN_USER}:${SPAWN_USER}" "$BASHRC"
+fi
+
+# If OpenCode is already installed, also create a system-wide symlink
 OPENCODE_BIN="${SPAWN_USER_HOME}/.opencode/bin/opencode"
 if [[ -x "$OPENCODE_BIN" ]]; then
   ln -sf "$OPENCODE_BIN" /usr/local/bin/opencode 2>/dev/null || true
-  # Add to user's .bashrc if not already there
-  BASHRC="${SPAWN_USER_HOME}/.bashrc"
-  if ! grep -q '.opencode/bin' "$BASHRC" 2>/dev/null; then
-    printf '\nexport PATH="$HOME/.opencode/bin:$PATH"\n' >> "$BASHRC"
-    chown "${SPAWN_USER}:${SPAWN_USER}" "$BASHRC"
-  fi
-  log "OpenCode PATH configured (/usr/local/bin/opencode)"
+  log "OpenCode found and symlinked to /usr/local/bin/opencode"
 fi
 
 log "AI agent settings configured — no manual onboarding needed"
@@ -716,6 +718,7 @@ printf "    1. Open the dashboard: ${CYAN}${BASE_URL}${NC}\n"
 printf "    2. Install an AI coding agent (if not already installed):\n"
 printf "       ${CYAN}Claude Code:${NC} https://docs.anthropic.com/claude-code\n"
 printf "       ${CYAN}OpenCode:${NC}    curl -fsSL https://opencode.ai/install | bash\n"
+printf "       ${DIM}After installing, run: source ~/.bashrc${NC}\n"
 printf "    3. Launch the agent from ${CYAN}${SCWS_ROOT}${NC} and start building!\n"
 printf "       The spawn MCP server is pre-configured — no setup needed.\n"
 if $IS_PI; then
