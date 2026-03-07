@@ -1,31 +1,42 @@
 # SPAWN — Self-Programming Autonomous Web Node
 
-A server with a brain. SPAWN turns any Ubuntu machine into an autonomous development environment powered by Claude AI. Describe what you want in plain English — a REST API, a dashboard, a bot, a full-stack app — and SPAWN writes the code, installs dependencies, creates the database, configures the reverse proxy, starts the process, and makes it live at a real URL. No deploying. No DevOps. No manual steps. Just ideas in, running software out.
+A server with a brain. SPAWN turns any Ubuntu machine into an autonomous development environment powered by AI coding agents. Describe what you want in plain English — a REST API, a dashboard, a bot, a full-stack app — and SPAWN writes the code, installs dependencies, creates the database, configures the reverse proxy, starts the process, and makes it live at a real URL. No deploying. No DevOps. No manual steps. Just ideas in, running software out.
 
-It manages its own infrastructure. It monitors its own health. It fixes its own bugs. It remembers what it built and picks up where it left off. You talk to it through a sleek dark-mode dashboard with a built-in terminal, live Claude sessions, file editor, and one-click deploys to external servers. Every project it creates is production-ready and running in seconds.
+It manages its own infrastructure. It monitors its own health. It fixes its own bugs. It remembers what it built and picks up where it left off. You talk to it through a sleek dark-mode dashboard with a built-in terminal, live AI sessions, file editor, and one-click deploys to external servers. Every project it creates is production-ready and running in seconds.
 
 One machine. One install. Unlimited projects. From a $60 Raspberry Pi on your desk to a $5/mo cloud VPS — SPAWN turns commodity hardware into your personal autonomous software factory.
 
 ---
 
-### Works Best with a Claude Account
+## Choose Your AI Engine
 
-SPAWN is powered by Claude Code CLI. Any **<a href="https://claude.ai" target="_blank">claude.ai</a>** account works to get started — even the free tier — so you can try it out without paying anything. However, free and Pro tiers have very limited Claude Code usage. For real work, **<a href="https://claude.ai/pricing" target="_blank">Claude Max</a>** ($100/month) is recommended for unlimited use. You can also use an **<a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic API key</a>** instead.
+SPAWN supports two AI coding agents out of the box. Both get full dashboard integration — dedicated session buttons, terminal tabs, and reattach support. Use one or both.
 
-#### Alternative: OpenCode
+### OpenCode — Free and Open Source
 
-**<a href="https://opencode.ai" target="_blank">OpenCode</a>** is an open-source AI coding agent that reads `CLAUDE.md` natively (Claude Code compatibility mode). It supports Claude via API key, plus 75+ other LLM providers. Install with: `curl -fsSL https://opencode.ai/install | bash`
+**<a href="https://opencode.ai" target="_blank">OpenCode</a>** is an open-source AI coding agent with native `CLAUDE.md` support (Claude Code compatibility mode). It works with 75+ LLM providers — including Claude, GPT-4, Gemini, Llama, Mistral, and more — so you can use whatever model and API key you already have.
 
-**Which should you use?**
+```bash
+curl -fsSL https://opencode.ai/install | bash
+```
 
-| | Claude Code CLI | OpenCode |
+OpenCode is the fastest way to get started with SPAWN. Bring your own API key from any supported provider, or use OpenCode's free "Big Pickle" model to try SPAWN without spending anything.
+
+### Claude Code CLI — The Power Option
+
+**<a href="https://claude.ai" target="_blank">Claude Code CLI</a>** is Anthropic's official coding agent. SPAWN was originally built around it. Any claude.ai account works — even the free tier — though free and Pro tiers have limited Claude Code usage. For serious use, **<a href="https://claude.ai/pricing" target="_blank">Claude Max</a>** ($100/month) gives you unlimited sessions.
+
+### Which should you use?
+
+| | OpenCode | Claude Code CLI |
 |---|---|---|
-| **Best for** | Daily SPAWN use — building, deploying, fixing | Trying SPAWN, experimenting with other models |
-| **Cost model** | Flat subscription ($100/mo Max = unlimited) | Per-API-call (tokens add up fast under heavy use) |
-| **AI quality** | Claude only — the gold standard for coding agents | 75+ models — quality varies widely by provider |
-| **SPAWN compat** | Native — SPAWN was built for it | Reads CLAUDE.md, supports MCP servers |
+| **Get started** | Free — bring any API key or use Big Pickle | Free tier available, Max ($100/mo) for unlimited |
+| **Models** | 75+ providers — Claude, GPT-4, Gemini, Llama, etc. | Claude only |
+| **Open source** | Yes — MIT licensed | No |
+| **Best for** | Flexibility, experimenting, budget control | All-in on Claude, flat-rate unlimited usage |
+| **SPAWN integration** | Full — reads CLAUDE.md, dashboard sessions | Full — native, SPAWN was built for it |
 
-**Bottom line**: Claude Code with a Max subscription is the best value for serious SPAWN use. A single complex project can burn through $50+ in API credits in a day — Max gives you unlimited sessions for a flat rate. If you're just exploring or want to try SPAWN before committing, OpenCode's free "Big Pickle" model is surprisingly capable (not Claude-level, but solid for lighter tasks) and costs nothing to get started.
+**Our recommendation**: Start with OpenCode — it's free, open source, and works with any model. If you find yourself doing heavy daily work and want the simplicity of unlimited Claude sessions at a flat rate, add Claude Code with a Max subscription. SPAWN's dashboard lets you launch either tool per project, so you don't have to choose — use both.
 
 ---
 
@@ -58,7 +69,7 @@ SPAWN_DOMAIN=spawn.example.com ENABLE_SSL=true SSL_EMAIL=you@example.com \
   curl -fsSL https://raw.githubusercontent.com/passonprobate-ship-it/SCWS/master/scripts/install.sh | bash
 ```
 
-After install, run the onboarding wizard to set up Claude Code CLI and authentication:
+After install, run the onboarding wizard to set up your AI tools and authentication:
 
 ```bash
 # On a Raspberry Pi:
@@ -152,8 +163,8 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 
 | Page | Shortcut | Description |
 |------|----------|-------------|
-| Terminal | `Ctrl+J` | Interactive Claude AI terminal — type prompts and watch it work |
-| Sessions | — | View and resume previous Claude AI sessions |
+| Terminal | `Ctrl+J` | Interactive AI terminal — type prompts and watch it work |
+| Sessions | — | View and resume previous AI sessions (Claude and OpenCode) |
 | Projects | `Ctrl+1` | Create, start, stop, build, deploy, view logs |
 | System | `Ctrl+2` | CPU, memory, disk, temperature, PM2 process status |
 | Activity | `Ctrl+3` | Timeline of all actions |
@@ -176,7 +187,7 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 - **Reverse Proxy**: nginx
 - **Frontend**: Single-file SPA — vanilla JS, no framework
 - **Auth**: Bearer token with timing-safe compare
-- **AI**: Claude Code CLI or [OpenCode](https://opencode.ai) (headless sessions)
+- **AI**: [OpenCode](https://opencode.ai) and/or Claude Code CLI (headless terminal sessions)
 - **VCS**: Git + GitHub CLI (`gh`)
 - **Updates**: Auto-update via git polling (every 5 minutes)
 
@@ -243,7 +254,7 @@ bash deploy.sh
 
 ### Post-Deployment
 
-Open `http://<vps-ip>/` and log in with your dashboard token. Then run the onboarding wizard to enable Claude Code AI sessions:
+Open `http://<vps-ip>/` and log in with your dashboard token. Then run the onboarding wizard to enable AI sessions:
 
 ```bash
 ssh root@<vps-ip>
