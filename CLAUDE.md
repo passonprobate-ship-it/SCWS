@@ -100,6 +100,19 @@ Connection: `postgresql://scws:<password>@localhost:5432/scws_daemon`
 
 Per-project databases are created on demand: `postgresql://scws:<password>@localhost:5432/<project_db_name>`
 
+## Memory Tools (spawn-mcp)
+
+The `spawn-mcp` MCP server provides persistent key-value memory via the `spawn_memories` table. Use these tools to save state across sessions:
+
+| Tool | Purpose |
+|------|---------|
+| `spawn_remember` | Store a key-value pair (upserts if key exists). Params: `key`, `value`, `tags` (optional array) |
+| `spawn_recall` | Retrieve a memory by key |
+| `spawn_forget` | Delete a memory by key |
+| `spawn_list_memories` | List all stored keys and tags (values omitted for brevity) |
+
+**When to use**: Save task plans (`active-task-{project}`), architecture decisions, deployment notes, or any state that should survive session disconnects. Always check existing memories before starting work on a project.
+
 ## Port Allocation
 
 - **4000**: SPAWN daemon (fixed — do not change)

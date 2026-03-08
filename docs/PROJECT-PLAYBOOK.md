@@ -486,7 +486,7 @@ All endpoints require `Authorization: Bearer <DASHBOARD_TOKEN>` header.
 |---|---|---|
 | GET | `/api/projects` | List all projects |
 | POST | `/api/projects` | Create a project card |
-| GET | `/api/projects/stats` | Get file counts, disk size, last activity for all projects |
+| GET | `/api/projects/stats` | Get PM2 stats keyed by project name: `{ "my-app": { name, status, pm2Status, memory, cpu, restarts, uptime } }` |
 | GET | `/api/projects/:name` | Get one project |
 | PATCH | `/api/projects/:name` | Update project fields |
 | DELETE | `/api/projects/:name` | Delete project from registry |
@@ -585,6 +585,31 @@ sudo nginx -t && sudo nginx -s reload
 
 ---
 
+## nginx Gotchas: Trailing Slashes and Base URL
+
+**The trailing slash on `proxy_pass` matters.** With `location /my-app/` and `proxy_pass http://127.0.0.1:5050/;` (note the trailing `/`), nginx strips the location prefix. A request to `/my-app/api/health` arrives at your app as `/api/health`.
+
+**Your app must use `BASE_URL` for self-referencing URLs only** (links, redirects, static assets), NOT for route definitions. Define routes without the prefix:
+
+```javascript
+// CORRECT — routes are prefix-free thanks to nginx stripping
+app.get("/api/health", (req, res) => res.json({ ok: true }));
+app.use("/static", express.static("public"));
+
+// WRONG — don't duplicate the prefix in routes
+app.get("/my-app/api/health", ...);  // This won't match!
+```
+
+**Common mistakes:**
+- Missing trailing `/` on `proxy_pass` → requests arrive with `/my-app/...` prefix intact
+- Hardcoding `/my-app/` in route definitions → double-prefixed, nothing matches
+- Forgetting `BASE_URL` in HTML links → links point to `/` instead of `/my-app/`
+- Not setting `BASE_URL=/<name>` in `.env` → app can't construct correct self-referencing URLs
+
+**Testing tip:** Always test through nginx first (`curl http://localhost/<name>/`), not just the direct port.
+
+---
+
 ## PM2 Conventions
 
 ```bash
@@ -635,6 +660,24 @@ $.post("/api/new-route", D("Description", async (t, e) => {
 ```
 
 **CRITICAL:** Any changes to `index.cjs` or `dashboard.html` require a daemon restart to take effect. Batch all changes, warn the user, restart as the final command.
+
+---
+
+## Memory Tools (spawn-mcp)
+
+SPAWN has a persistent key-value memory system via the `spawn-mcp` MCP server. Use it to save task plans, architecture decisions, and state that should survive session disconnects.
+
+**Available MCP tools:**
+- `spawn_remember(key, value, tags?)` — Store/update a memory (upserts)
+- `spawn_recall(key)` — Retrieve a memory by key
+- `spawn_forget(key)` — Delete a memory
+- `spawn_list_memories(tag?)` — List all keys (optionally filter by tag)
+
+**Best practice:** Before starting non-trivial work, save your plan:
+```
+spawn_remember("active-task-my-app", "Step 1: ..., Step 2: ..., Status: starting")
+```
+Update after milestones. Mark complete or paused when done.
 
 ---
 

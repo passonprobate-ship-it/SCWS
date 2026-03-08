@@ -239,9 +239,10 @@ app.get("/api/projects/stats", asyncHandler("Get project stats", async (_req, re
     const name = p.name?.startsWith("scws-") ? p.name.replace(/^scws-/, "") : p.name;
     if (name) pm2Map.set(name, p);
   }
-  const stats = projects.map(p => {
+  const stats: Record<string, any> = {};
+  for (const p of projects) {
     const proc = pm2Map.get(p.name);
-    return {
+    stats[p.name] = {
       name: p.name,
       status: p.status,
       pm2Status: proc?.pm2_env?.status || null,
@@ -250,7 +251,7 @@ app.get("/api/projects/stats", asyncHandler("Get project stats", async (_req, re
       restarts: proc?.pm2_env?.restart_time ?? null,
       uptime: proc?.pm2_env?.pm_uptime || null,
     };
-  });
+  }
   res.json(stats);
 }));
 
