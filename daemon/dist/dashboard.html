@@ -3973,15 +3973,18 @@ async function loadMemoryChart() {
     const canvas = document.getElementById("memory-chart");
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = canvas.offsetWidth * dpr;
+    await new Promise(r => requestAnimationFrame(r));
+    const cw = canvas.offsetWidth || card.offsetWidth - 24;
+    if (!cw) { card.style.display = "none"; return; }
+    canvas.width = cw * dpr;
     canvas.height = 80 * dpr;
     ctx.scale(dpr, dpr);
-    const w = canvas.offsetWidth, h = 80;
+    const w = cw, h = 80;
     const pcts = snapshots.map(s => {
-      const d = typeof s.details === "string" ? JSON.parse(s.details) : s.details;
-      return d.memPct || d.mem_pct || d.usedPct || 0;
+      const d = s.details ? (typeof s.details === "string" ? JSON.parse(s.details) : s.details) : s;
+      return d.memPct || d.mem_pct || d.usedPct || d.pct || 0;
     });
-    if (!pcts.length) return;
+    if (!pcts.length || pcts.every(p => !p)) { card.style.display = "none"; return; }
     const min = Math.max(0, Math.min(...pcts) - 5);
     const max = Math.min(100, Math.max(...pcts) + 5);
     const range = max - min || 1;
