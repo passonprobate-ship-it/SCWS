@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { createServer } from "http";
 import { createHash, timingSafeEqual, randomUUID } from "crypto";
 import { readFileSync, existsSync } from "fs";
-import { readFile, writeFile, readdir, stat, mkdir, rm, unlink } from "fs/promises";
+import { readFile, writeFile, readdir, stat, lstat, mkdir, rm, unlink, realpath } from "fs/promises";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execFile } from "child_process";
@@ -53,6 +53,7 @@ const USER_HOME = process.env.HOME || "/home/codeman";
 // ── Express setup ─────────────────────────────────────────────────
 
 const app = express();
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
 // Skip JSON parsing for upload endpoints
@@ -74,7 +75,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.header("X-Content-Type-Options", "nosniff");
   res.header("X-Frame-Options", "DENY");
   res.header("Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; " +
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
     "connect-src 'self' ws: wss:; img-src 'self' data: blob:; font-src 'self' https://cdn.jsdelivr.net");
   next();
@@ -92,6 +93,7 @@ try {
 if (_rateLimit) {
   app.use("/api/claude/run", _rateLimit({ windowMs: 60000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Too many Claude run requests, try again later" } }));
   app.use("/api/upload-zip", _rateLimit({ windowMs: 60000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Too many upload requests, try again later" } }));
+  app.use("/api/files/upload", _rateLimit({ windowMs: 60000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Too many upload requests, try again later" } }));
   app.use("/api", _rateLimit({ windowMs: 60000, max: 200, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, try again later" } }));
 } else {
   console.warn("[WARN] express-rate-limit not installed — rate limiting disabled");
@@ -125,7 +127,9 @@ function safeEqual(a: string, b: string): boolean {
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const queryToken = req.query.token as string | undefined;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : queryToken;
+  // Only allow query token auth for SSE/stream endpoints (can't set headers in EventSource)
+  const isStreamPath = req.path.includes("/logs/stream") || req.path.includes("/claude/stream");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (isStreamPath ? queryToken : undefined);
 
   if (!token) {
     res.status(401).json({ error: "Missing authorization header" });
@@ -631,12 +635,16 @@ app.post("/api/upload-zip", express.json({ limit: "50mb" }), asyncHandler("Uploa
     await mkdir(projectDir, { recursive: true });
     await execFileAsync("unzip", ["-o", zipPath, "-d", projectDir], { timeout: 60_000 });
 
-    // Security: verify extracted paths
+    // Security: verify extracted paths and reject symlinks
     const extractedPaths = await readdir(projectDir, { recursive: true });
     for (const ep of extractedPaths) {
       const resolved = resolve(projectDir, String(ep));
       if (!resolved.startsWith(projectDir)) {
         throw new Error("Extracted file escapes target directory — rejected for security");
+      }
+      const st = await lstat(resolved);
+      if (st.isSymbolicLink()) {
+        throw new Error("Extracted file contains symlink — rejected for security");
       }
     }
 
@@ -931,8 +939,9 @@ app.get("/api/activity", asyncHandler("Get activity", async (req, res) => {
 
 app.post("/api/files/upload", asyncHandler("Upload files", async (req, res) => {
   const uploadDir = (req.headers["x-upload-path"] as string) || "/var/www/scws";
-  // Security: must be under /var/www/scws
-  const resolved = resolve(uploadDir);
+  // Security: must be under /var/www/scws — resolve symlinks to prevent escapes
+  let resolved = resolve(uploadDir);
+  try { resolved = await realpath(resolved); } catch { /* path may not exist yet, resolve() is sufficient */ }
   if (!resolved.startsWith("/var/www/scws")) {
     res.status(403).json({ error: "Upload path must be under /var/www/scws" });
     return;

@@ -21,4 +21,13 @@ pool.on("error", (err) => {
   }
 });
 
+// Validate DB connection at startup — fail fast on bad credentials
+pool.connect().then((client) => {
+  client.release();
+  console.log("[db] Connection verified");
+}).catch((err) => {
+  console.error("[db] FATAL: Cannot connect to database:", err.message);
+  process.exit(1);
+});
+
 export const db = drizzle(pool, { schema });
