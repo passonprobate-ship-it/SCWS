@@ -565,8 +565,9 @@ app.post("/api/import", asyncHandler("Import from URL", async (req, res) => {
 // ── Upload ZIP ───────────────────────────────────────────────────
 
 app.post("/api/upload-zip", express.json({ limit: "50mb" }), asyncHandler("Upload ZIP", async (req, res) => {
-  const { data, filename } = req.body;
+  const { data, filename, fileName } = req.body;
   if (!data) { res.status(400).json({ error: "data is required" }); return; }
+  const fname = filename || fileName;
 
   const buffer = Buffer.from(data, "base64");
   if (buffer.length > 50 * 1024 * 1024) {
@@ -574,7 +575,7 @@ app.post("/api/upload-zip", express.json({ limit: "50mb" }), asyncHandler("Uploa
     return;
   }
 
-  const origName = (filename || "project.zip").replace(/\.zip$/i, "");
+  const origName = (fname || "project.zip").replace(/\.zip$/i, "");
   let name = origName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").substring(0, 20).replace(/-$/, "") || "project";
   let uniqueName = name;
   let suffix = 2;
@@ -892,6 +893,47 @@ app.get("/api/activity", asyncHandler("Get activity", async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 100;
   const activity = await storage.getActivity(limit);
   res.json(activity);
+}));
+
+// ── File upload (Files page) ─────────────────────────────────────
+
+app.post("/api/files/upload", asyncHandler("Upload files", async (req, res) => {
+  const uploadDir = (req.headers["x-upload-path"] as string) || "/var/www/scws";
+  // Security: must be under /var/www/scws
+  const resolved = resolve(uploadDir);
+  if (!resolved.startsWith("/var/www/scws")) {
+    res.status(403).json({ error: "Upload path must be under /var/www/scws" });
+    return;
+  }
+  await mkdir(resolved, { recursive: true });
+
+  const busboy = (await import("busboy")).default;
+  const bb = busboy({ headers: req.headers, limits: { fileSize: 50 * 1024 * 1024 } });
+  const uploaded: string[] = [];
+
+  await new Promise<void>((resolveP, rejectP) => {
+    bb.on("file", (_fieldname: string, stream: any, info: { filename: string }) => {
+      const safeName = (info.filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+      const dest = join(resolved, safeName);
+      // Security: no path traversal
+      if (!dest.startsWith(resolved)) {
+        stream.resume();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("end", async () => {
+        await writeFile(dest, Buffer.concat(chunks));
+        uploaded.push(safeName);
+      });
+    });
+    bb.on("finish", () => setTimeout(() => resolveP(), 50));
+    bb.on("error", rejectP);
+    req.pipe(bb);
+  });
+
+  await storage.logActivity(null, "file_uploaded", `Uploaded ${uploaded.length} file(s) to ${resolved}`);
+  res.json({ ok: true, files: uploaded, path: resolved });
 }));
 
 // ── Image upload ─────────────────────────────────────────────────
