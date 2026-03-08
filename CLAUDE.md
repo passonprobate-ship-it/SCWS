@@ -162,11 +162,13 @@ Also see the **Project Creation Checklist** section below for the condensed step
 
 - **`timingSafeEqual`**: Crashes if buffers differ in length. Always guard with a `Buffer.byteLength` check first.
 - **Never expose secrets** via API responses, logs, or error messages.
-- **SSE auth**: Use `fetch()` with an `Authorization` header. Never pass tokens as `?token=` query params.
-- **Rate limiting**: Apply `express-rate-limit` on auth endpoints and sensitive routes.
+- **SSE auth**: Query token (`?token=`) is only accepted on SSE/stream endpoints (`/logs/stream`, `/claude/stream`). All other routes require `Authorization: Bearer` header. WebSocket auth in `terminal.ts` is separate and correctly uses query tokens (WebSocket API can't set headers).
+- **Rate limiting**: `express-rate-limit` on sensitive routes — `/api/claude/run` (10/min), `/api/upload-zip` and `/api/files/upload` (5/min), general `/api` (200/min).
 - **Input validation**: Enforce max lengths, regex for addresses/identifiers, NaN checks on numeric inputs.
-- **Security headers**: Use `helmet` middleware.
-- **Behind nginx**: Set `app.set("trust proxy", 1)` so Express sees real client IPs.
+- **Security headers**: CSP (`script-src` allows `'unsafe-inline'` + jsdelivr CDN, no `'unsafe-eval'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`. CDN scripts have SRI integrity hashes.
+- **Upload security**: ZIP uploads reject path traversal entries and symlinks (via `lstat()`). File uploads resolve symlinks with `realpath()` before path validation.
+- **Behind nginx**: `app.set("trust proxy", 1)` so Express sees real client IPs for rate limiting.
+- **Fail-fast DB**: Database connection is validated at startup — daemon exits immediately on bad credentials.
 
 ## Project Creation Checklist
 

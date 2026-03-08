@@ -9,18 +9,25 @@ SPAWN uses a single-daemon architecture (Express 5 on port 4000) that manages pr
 ### Authentication
 
 - **Bearer token auth** on all API endpoints. Tokens are compared using Node.js `crypto.timingSafeEqual` with a buffer-length guard to prevent timing attacks.
+- **Query token restriction**: The `?token=` query parameter is only accepted on SSE/stream endpoints (`/logs/stream`, `/claude/stream`) where `EventSource` API cannot set headers. All other HTTP routes require the `Authorization: Bearer` header. This prevents token leakage via browser history, server logs, and referer headers.
+- **WebSocket auth**: Terminal WebSocket connections use query tokens (WebSocket API limitation) — handled separately in `terminal.ts`.
 - **Dashboard access** uses the same bearer token mechanism.
 - **No user accounts or RBAC** — there is a single admin token. You either have full access or no access.
 
 ### Transport and Headers
 
 - **CORS** origin whitelist restricts which domains can make cross-origin requests to the API.
-- **CSP and security headers** via Helmet middleware (X-Content-Type-Options, X-Frame-Options, etc.).
-- **Trust proxy** is enabled so Express sees real client IPs behind nginx.
+- **Content Security Policy**: `script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net` — no `'unsafe-eval'`. `'unsafe-inline'` is required because the dashboard is a single-file SPA with inline scripts. All CDN scripts have **SRI integrity hashes** (`sha384`) and `crossorigin="anonymous"` to prevent CDN tampering.
+- **Security headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
+- **Trust proxy** is enabled (`app.set("trust proxy", 1)`) so Express sees real client IPs behind nginx for accurate rate limiting.
 
 ### Rate Limiting
 
-- `express-rate-limit` is applied to auth endpoints and sensitive routes to mitigate brute-force attacks.
+- `express-rate-limit` is applied to sensitive routes:
+  - `/api/claude/run`: 10 requests/minute
+  - `/api/upload-zip`: 5 requests/minute
+  - `/api/files/upload`: 5 requests/minute
+  - `/api/*` (catch-all): 200 requests/minute
 
 ### Input Validation
 
@@ -28,6 +35,8 @@ SPAWN uses a single-daemon architecture (Express 5 on port 4000) that manages pr
 - Regex validation for project names, identifiers, and addresses.
 - NaN checks on numeric inputs.
 - Shell commands use `child_process.execFile` (not `exec`) to avoid shell injection.
+- **Upload security**: ZIP uploads check for path traversal entries and reject symlinks (via `lstat()`). File uploads resolve symlinks with `realpath()` before the `startsWith()` path check to prevent symlink-based directory escapes.
+- **Fail-fast startup**: Database connection is validated at module load — daemon exits immediately if credentials are wrong rather than failing on first query.
 
 ## What IS Isolated
 

@@ -481,6 +481,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 All endpoints require `Authorization: Bearer <DASHBOARD_TOKEN>` header.
 
+**Exception**: SSE/stream endpoints (`/logs/stream`, `/claude/stream`) also accept `?token=<DASHBOARD_TOKEN>` query parameter, since the browser `EventSource` API cannot set headers. All other routes require the header.
+
 ### Projects
 | Method | Path | Description |
 |---|---|---|
@@ -520,6 +522,12 @@ All endpoints require `Authorization: Bearer <DASHBOARD_TOKEN>` header.
 | GET | `/api/funnel/status` | Get current funnel status |
 | POST | `/api/funnel/enable` | Enable funnel for a project (`{"projectName": "..."}`) |
 | POST | `/api/funnel/disable` | Disable funnel |
+
+### Uploads
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/upload-zip` | Upload a base64-encoded ZIP as a new project (50MB max, 5 req/min) |
+| POST | `/api/files/upload` | Multipart file upload to a path under `/var/www/scws` (50MB max, 5 req/min). Set `X-Upload-Path` header for destination dir. |
 
 ### System
 | Method | Path | Description |
