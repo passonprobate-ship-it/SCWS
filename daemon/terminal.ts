@@ -27,11 +27,15 @@ interface TerminalSession {
   pingTimer: ReturnType<typeof setInterval> | null;
   alive: boolean;
   createdAt: number;
+  outputBuffer: string[];
+  detached: boolean;
 }
 
 interface ClaudeSession extends TerminalSession {
   tool: "claude" | "opencode";
   projectName: string | null;
+  outputBuffer: string[];       // ring buffer of recent output for replay on reattach
+  detached: boolean;            // true when WebSocket disconnected but pty still alive
 }
 
 type ClientMessage =
@@ -73,6 +77,13 @@ export function initTerminalServer(
         socket.destroy();
         return;
       }
+      const reattachTermId = (query.session as string) || null;
+      if (reattachTermId && sessions.has(reattachTermId)) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          reattachTerminalSession(ws, reattachTermId);
+        });
+        return;
+      }
       if (sessions.size >= MAX_SESSIONS) {
         log(`Terminal session limit reached (${MAX_SESSIONS})`, "terminal");
         socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
@@ -96,8 +107,13 @@ export function initTerminalServer(
       }
       const tool = (query.tool as string) === "opencode" ? "opencode" as const : "claude" as const;
       const projectName = (query.project as string) || null;
+      const reattachId = (query.session as string) || null;
       wss.handleUpgrade(req, socket, head, (ws) => {
-        handleClaudeTerminalConnection(ws, tool, projectName);
+        if (reattachId && claudeSessions.has(reattachId)) {
+          reattachClaudeSession(ws, reattachId);
+        } else {
+          handleClaudeTerminalConnection(ws, tool, projectName);
+        }
       });
     }
   });
@@ -132,11 +148,18 @@ function handleTerminalConnection(ws: WebSocket): void {
     pingTimer: null,
     alive: true,
     createdAt: Date.now(),
+    outputBuffer: [],
+    detached: false,
   };
 
   sessions.set(id, session);
   resetIdleTimer(session, sessions);
-  setupSessionHandlers(session, sessions);
+  setupTerminalSessionHandlers(session);
+
+  // Send session ID to client for reattach
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "session", id }));
+  }
 }
 
 // ── Claude/OpenCode Terminal ──────────────────────────────────────
@@ -191,11 +214,13 @@ function handleClaudeTerminalConnection(
     createdAt: Date.now(),
     tool,
     projectName,
+    outputBuffer: [],
+    detached: false,
   };
 
   claudeSessions.set(id, session);
   resetIdleTimer(session, claudeSessions);
-  setupSessionHandlers(session, claudeSessions);
+  setupClaudeSessionHandlers(session);
 
   // Log the session start
   storage.logActivity({
@@ -204,39 +229,55 @@ function handleClaudeTerminalConnection(
   }).catch(() => {});
 }
 
-// ── Shared Handlers ──────────────────────────────────────────────
+// ── Claude Session Handlers (with detach/reattach support) ───────
 
-function setupSessionHandlers(session: TerminalSession, map: Map<string, TerminalSession>): void {
+const MAX_OUTPUT_BUFFER = 500; // lines to keep for replay
+const DETACH_TIMEOUT_MS = 10 * 60 * 1000; // kill detached session after 10 min
+
+function setupClaudeSessionHandlers(session: ClaudeSession): void {
+  const { id } = session;
+  const shell = session.pty;
+
+  setupWsHandlers(session);
+
+  // PTY output → WebSocket + buffer
+  shell.onData((data: string) => {
+    // Always buffer regardless of WebSocket state
+    session.outputBuffer.push(data);
+    if (session.outputBuffer.length > MAX_OUTPUT_BUFFER) {
+      session.outputBuffer.splice(0, session.outputBuffer.length - MAX_OUTPUT_BUFFER);
+    }
+    if (session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type: "output", data }));
+    }
+  });
+
+  shell.onExit(({ exitCode }: { exitCode: number }) => {
+    log(`Claude session ${id} PTY exited (code ${exitCode})`, "terminal");
+    if (session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type: "exit", code: exitCode }));
+      session.ws.close();
+    }
+    cleanupSession(id, claudeSessions);
+  });
+}
+
+function setupWsHandlers(session: ClaudeSession): void {
   const { id, ws } = session;
   const shell = session.pty;
 
   // Keepalive
   ws.on("pong", () => { session.alive = true; });
+  if (session.pingTimer) clearInterval(session.pingTimer);
   session.pingTimer = setInterval(() => {
     if (!session.alive) {
-      log(`Terminal session ${id} ping timeout — closing`, "terminal");
-      ws.terminate();
+      log(`Claude session ${id} ping timeout — detaching`, "terminal");
+      detachClaudeSession(session);
       return;
     }
     session.alive = false;
     if (ws.readyState === WebSocket.OPEN) ws.ping();
   }, PING_INTERVAL_MS);
-
-  // PTY output → WebSocket
-  shell.onData((data: string) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "output", data }));
-    }
-  });
-
-  shell.onExit(({ exitCode }: { exitCode: number }) => {
-    log(`Terminal session ${id} PTY exited (code ${exitCode})`, "terminal");
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "exit", code: exitCode }));
-      ws.close();
-    }
-    cleanupSession(id, map);
-  });
 
   // WebSocket messages → PTY
   ws.on("message", (raw: Buffer | string) => {
@@ -244,32 +285,204 @@ function setupSessionHandlers(session: TerminalSession, map: Map<string, Termina
       const msg: ClientMessage = JSON.parse(
         typeof raw === "string" ? raw : raw.toString(),
       );
-
       switch (msg.type) {
         case "input":
           shell.write(msg.data);
-          resetIdleTimer(session, map);
+          resetIdleTimer(session, claudeSessions);
           break;
         case "resize":
-          if (msg.cols > 0 && msg.rows > 0) {
-            shell.resize(msg.cols, msg.rows);
-          }
+          if (msg.cols > 0 && msg.rows > 0) shell.resize(msg.cols, msg.rows);
           break;
       }
-    } catch {
-      // Invalid message — ignore
-    }
+    } catch { /* ignore */ }
   });
 
   ws.on("close", () => {
-    log(`Terminal session ${id} WebSocket closed`, "terminal");
-    cleanupSession(id, map);
+    log(`Claude session ${id} WebSocket closed — detaching (pty stays alive)`, "terminal");
+    detachClaudeSession(session);
   });
 
   ws.on("error", (err: Error) => {
-    log(`Terminal session ${id} error: ${err.message}`, "terminal");
-    cleanupSession(id, map);
+    log(`Claude session ${id} WS error: ${err.message} — detaching`, "terminal");
+    detachClaudeSession(session);
   });
+
+  // Send session ID to client
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "session", id, tool: session.tool }));
+  }
+}
+
+function detachClaudeSession(session: ClaudeSession): void {
+  if (session.detached) return;
+  session.detached = true;
+  if (session.pingTimer) { clearInterval(session.pingTimer); session.pingTimer = null; }
+  try { if (session.ws.readyState === WebSocket.OPEN) session.ws.close(); } catch { /* ignore */ }
+  log(`Claude session ${session.id} detached — pty alive, waiting for reattach`, "terminal");
+
+  // Set a timeout to kill the session if nobody reattaches
+  session.idleTimer = setTimeout(() => {
+    if (session.detached && claudeSessions.has(session.id)) {
+      log(`Claude session ${session.id} detach timeout — killing`, "terminal");
+      cleanupSession(session.id, claudeSessions);
+    }
+  }, DETACH_TIMEOUT_MS);
+}
+
+function reattachClaudeSession(ws: WebSocket, sessionId: string): void {
+  const session = claudeSessions.get(sessionId);
+  if (!session) {
+    ws.send(JSON.stringify({ type: "output", data: "\x1b[31mSession not found\x1b[0m\r\n" }));
+    ws.close(4404, "Session not found");
+    return;
+  }
+
+  log(`Reattaching WebSocket to claude session ${sessionId}`, "terminal");
+
+  // Clear detach timeout
+  if (session.idleTimer) { clearTimeout(session.idleTimer); session.idleTimer = null; }
+  session.detached = false;
+  session.alive = true;
+
+  // Swap WebSocket
+  const oldWs = session.ws;
+  session.ws = ws;
+  try { if (oldWs.readyState === WebSocket.OPEN) oldWs.close(); } catch { /* ignore */ }
+
+  // Remove old WS listeners (they reference the old ws, new ones get set up below)
+  oldWs.removeAllListeners();
+
+  // Setup new WS handlers
+  setupWsHandlers(session);
+
+  // Replay buffered output
+  if (session.outputBuffer.length > 0) {
+    const replay = session.outputBuffer.join("");
+    ws.send(JSON.stringify({ type: "replay", data: replay }));
+  }
+
+  resetIdleTimer(session, claudeSessions);
+}
+
+// ── Shell Terminal Handlers (with detach/reattach) ───────────────
+
+function setupTerminalSessionHandlers(session: TerminalSession): void {
+  const { id } = session;
+  const shell = session.pty;
+
+  setupTerminalWsHandlers(session);
+
+  // PTY output → WebSocket + buffer
+  shell.onData((data: string) => {
+    session.outputBuffer.push(data);
+    if (session.outputBuffer.length > MAX_OUTPUT_BUFFER) {
+      session.outputBuffer.splice(0, session.outputBuffer.length - MAX_OUTPUT_BUFFER);
+    }
+    if (session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type: "output", data }));
+    }
+  });
+
+  shell.onExit(({ exitCode }: { exitCode: number }) => {
+    log(`Terminal session ${id} PTY exited (code ${exitCode})`, "terminal");
+    if (session.ws.readyState === WebSocket.OPEN) {
+      session.ws.send(JSON.stringify({ type: "exit", code: exitCode }));
+      session.ws.close();
+    }
+    cleanupSession(id, sessions);
+  });
+}
+
+function setupTerminalWsHandlers(session: TerminalSession): void {
+  const { id, ws } = session;
+  const shell = session.pty;
+
+  ws.on("pong", () => { session.alive = true; });
+  if (session.pingTimer) clearInterval(session.pingTimer);
+  session.pingTimer = setInterval(() => {
+    if (!session.alive) {
+      log(`Terminal session ${id} ping timeout — detaching`, "terminal");
+      detachTerminalSession(session);
+      return;
+    }
+    session.alive = false;
+    if (ws.readyState === WebSocket.OPEN) ws.ping();
+  }, PING_INTERVAL_MS);
+
+  ws.on("message", (raw: Buffer | string) => {
+    try {
+      const msg: ClientMessage = JSON.parse(
+        typeof raw === "string" ? raw : raw.toString(),
+      );
+      switch (msg.type) {
+        case "input":
+          shell.write(msg.data);
+          resetIdleTimer(session, sessions);
+          break;
+        case "resize":
+          if (msg.cols > 0 && msg.rows > 0) shell.resize(msg.cols, msg.rows);
+          break;
+      }
+    } catch { /* ignore */ }
+  });
+
+  ws.on("close", () => {
+    log(`Terminal session ${id} WebSocket closed — detaching (pty stays alive)`, "terminal");
+    detachTerminalSession(session);
+  });
+
+  ws.on("error", (err: Error) => {
+    log(`Terminal session ${id} WS error: ${err.message} — detaching`, "terminal");
+    detachTerminalSession(session);
+  });
+}
+
+function detachTerminalSession(session: TerminalSession): void {
+  if (session.detached) return;
+  session.detached = true;
+  if (session.pingTimer) { clearInterval(session.pingTimer); session.pingTimer = null; }
+  try { if (session.ws.readyState === WebSocket.OPEN) session.ws.close(); } catch { /* ignore */ }
+  log(`Terminal session ${session.id} detached — pty alive, waiting for reattach`, "terminal");
+
+  session.idleTimer = setTimeout(() => {
+    if (session.detached && sessions.has(session.id)) {
+      log(`Terminal session ${session.id} detach timeout — killing`, "terminal");
+      cleanupSession(session.id, sessions);
+    }
+  }, DETACH_TIMEOUT_MS);
+}
+
+function reattachTerminalSession(ws: WebSocket, sessionId: string): void {
+  const session = sessions.get(sessionId);
+  if (!session) {
+    ws.send(JSON.stringify({ type: "output", data: "\x1b[31mSession not found\x1b[0m\r\n" }));
+    ws.close(4404, "Session not found");
+    return;
+  }
+
+  log(`Reattaching WebSocket to terminal session ${sessionId}`, "terminal");
+
+  if (session.idleTimer) { clearTimeout(session.idleTimer); session.idleTimer = null; }
+  session.detached = false;
+  session.alive = true;
+
+  const oldWs = session.ws;
+  session.ws = ws;
+  try { if (oldWs.readyState === WebSocket.OPEN) oldWs.close(); } catch { /* ignore */ }
+  oldWs.removeAllListeners();
+
+  setupTerminalWsHandlers(session);
+
+  // Replay buffered output
+  if (session.outputBuffer.length > 0) {
+    const replay = session.outputBuffer.join("");
+    ws.send(JSON.stringify({ type: "replay", data: replay }));
+  }
+
+  // Send session ID
+  ws.send(JSON.stringify({ type: "session", id: sessionId }));
+
+  resetIdleTimer(session, sessions);
 }
 
 // ── Public API ────────────────────────────────────────────────────
@@ -284,8 +497,10 @@ export function getClaudeSessionsList(): Array<{
   projectName: string | null;
   createdAt: number;
   elapsed: number;
+  pid: number | null;
+  attached: boolean;
 }> {
-  const result: Array<{ id: string; tool: string; projectName: string | null; createdAt: number; elapsed: number }> = [];
+  const result: Array<{ id: string; tool: string; projectName: string | null; createdAt: number; elapsed: number; pid: number | null; attached: boolean }> = [];
   for (const s of claudeSessions.values()) {
     result.push({
       id: s.id,
@@ -293,17 +508,31 @@ export function getClaudeSessionsList(): Array<{
       projectName: s.projectName,
       createdAt: s.createdAt,
       elapsed: Date.now() - s.createdAt,
+      pid: s.pty?.pid ?? null,
+      attached: s.ws?.readyState === WebSocket.OPEN,
     });
   }
   return result;
 }
 
-export function getTerminalSessionsList(): Array<{ id: string; createdAt: number }> {
-  return Array.from(sessions.values()).map(s => ({ id: s.id, createdAt: s.createdAt }));
+export function getTerminalSessionsList(): Array<{ id: string; createdAt: number; attached: boolean }> {
+  return Array.from(sessions.values()).map(s => ({ id: s.id, createdAt: s.createdAt, attached: s.ws?.readyState === WebSocket.OPEN }));
 }
 
 export function getCapabilities(): { opencode: boolean } {
   return { opencode: !!opencodePath };
+}
+
+export function killClaudeSessionById(id: string): boolean {
+  if (claudeSessions.has(id)) {
+    cleanupSession(id, claudeSessions);
+    return true;
+  }
+  if (sessions.has(id)) {
+    cleanupSession(id, sessions);
+    return true;
+  }
+  return false;
 }
 
 export function shutdownTerminals(): void {

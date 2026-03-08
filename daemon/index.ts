@@ -23,7 +23,7 @@ import { deployProject } from "./deploy.js";
 import { addProjectNginx } from "./nginx.js";
 import {
   initTerminalServer, shutdownTerminals, getActiveTerminalCount,
-  getClaudeSessionsList, getTerminalSessionsList, getCapabilities,
+  getClaudeSessionsList, getTerminalSessionsList, getCapabilities, killClaudeSessionById,
 } from "./terminal.js";
 import {
   readClaudeSettings, writeClaudeSettings, sanitizeAllServers,
@@ -207,6 +207,38 @@ app.use("/api", requireAuth);
 app.get("/api/terminal/sessions", (_req: Request, res: Response) => {
   res.json({ terminal: getTerminalSessionsList(), claude: getClaudeSessionsList(), capabilities: getCapabilities() });
 });
+
+app.get("/api/sessions/all", asyncHandler("List all sessions", async (_req, res) => {
+  const claudeList = getClaudeSessionsList();
+  const terminalList = getTerminalSessionsList();
+  let orphans: Array<{ pid: number; rss: number | null; startTime: string | null; projectName: string | null }> = [];
+  try {
+    const { stdout } = await execFileAsync("pgrep", ["-af", "claude|opencode"], { timeout: 5000 });
+    const trackedPids = new Set([...claudeList, ...terminalList].map(s => s.pid).filter(Boolean));
+    const lines = stdout.trim().split("\n").filter(Boolean);
+    for (const line of lines) {
+      const m = line.match(/^(\d+)\s+(.*)$/);
+      if (!m) continue;
+      const pid = parseInt(m[1]);
+      if (trackedPids.has(pid)) continue;
+      if (m[2].includes("pgrep") || m[2].includes("scws-daemon")) continue;
+      if (!m[2].includes("/.local/bin/claude") && !m[2].includes("opencode")) continue;
+      let rss: number | null = null;
+      try {
+        const { stdout: psOut } = await execFileAsync("ps", ["-o", "rss=", "-p", String(pid)], { timeout: 3000 });
+        rss = parseInt(psOut.trim()) || null;
+      } catch { /* process may have exited */ }
+      orphans.push({ pid, rss, startTime: null, projectName: null });
+    }
+  } catch { /* no matching processes */ }
+  res.json({ claude: claudeList, terminals: terminalList, orphans });
+}));
+
+app.post("/api/claude/terminal/sessions/:id/kill", asyncHandler("Kill session", async (req, res) => {
+  const id = req.params.id as string;
+  const killed = killClaudeSessionById(id);
+  res.json({ ok: killed });
+}));
 
 // ── Projects ─────────────────────────────────────────────────────
 
@@ -907,11 +939,9 @@ app.post("/api/files/upload", asyncHandler("Upload files", async (req, res) => {
   }
   await mkdir(resolved, { recursive: true });
 
-  // Use busboy via createRequire to avoid esbuild CJS/ESM wrapper issues
-  const { createRequire } = await import("module");
-  const req2 = createRequire(import.meta.url);
-  const Busboy = req2("busboy") as typeof import("busboy");
-  const bb = Busboy({ headers: req.headers, limits: { fileSize: 50 * 1024 * 1024 } });
+  // Use busboy — require() works in CJS bundle context
+  const Busboy = (await import("busboy")).default || (await import("busboy"));
+  const bb = (Busboy as any)({ headers: req.headers, limits: { fileSize: 50 * 1024 * 1024 } });
   const uploaded: string[] = [];
   const writePromises: Promise<void>[] = [];
 
@@ -934,7 +964,7 @@ app.post("/api/files/upload", asyncHandler("Upload files", async (req, res) => {
     req.pipe(bb);
   });
 
-  await storage.logActivity(null, "file_uploaded", `Uploaded ${uploaded.length} file(s) to ${resolved}`);
+  await storage.logActivity({ action: "file_uploaded", details: `Uploaded ${uploaded.length} file(s) to ${resolved}` });
   res.json({ ok: true, files: uploaded, path: resolved });
 }));
 
@@ -1009,7 +1039,8 @@ app.get("/api/system", asyncHandler("System info", async (_req, res) => {
     const swapLine = free.split("\n").find((l: string) => l.startsWith("Swap:"));
     if (swapLine) {
       const parts = swapLine.trim().split(/\s+/);
-      info.swap = { total: parseInt(parts[1]), used: parseInt(parts[2]), free: parseInt(parts[3]) };
+      const swTotal = parseInt(parts[1]), swUsed = parseInt(parts[2]), swFree = parseInt(parts[3]);
+      info.swap = { total: swTotal, used: swUsed, free: swFree, pct: swTotal > 0 ? Math.round((swUsed / swTotal) * 100) : 0 };
     }
   } catch { info.swap = null; }
   // Daemon process info
@@ -1059,6 +1090,27 @@ app.patch("/api/watchdog/config", asyncHandler("Update watchdog config", async (
 
 app.get("/api/watchdog/status", asyncHandler("Watchdog status", async (_req, res) => {
   res.json(getWatchdogStatus());
+}));
+
+// ── Timezone ─────────────────────────────────────────────────────
+
+app.get("/api/system/timezone", asyncHandler("Get timezone", async (_req, res) => {
+  try {
+    const { stdout } = await execFileAsync("timedatectl", ["show", "--property=Timezone", "--value"], { timeout: 5000 });
+    res.json({ timezone: stdout.trim() });
+  } catch {
+    res.json({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+  }
+}));
+
+app.post("/api/system/timezone", asyncHandler("Set timezone", async (req, res) => {
+  const { timezone } = req.body;
+  if (!timezone || !/^[A-Za-z_/]+$/.test(timezone)) {
+    res.status(400).json({ error: "Invalid timezone" });
+    return;
+  }
+  await execFileAsync("sudo", ["timedatectl", "set-timezone", timezone], { timeout: 5000 });
+  res.json({ ok: true, timezone });
 }));
 
 // ── Memory metrics ───────────────────────────────────────────────
@@ -1173,6 +1225,42 @@ app.post("/api/system/quick-action", asyncHandler("System quick action", async (
     default:
       res.status(400).json({ error: `Unknown action: ${action}` });
   }
+}));
+
+// Individual system action routes (called by dashboard quick action buttons)
+app.post("/api/system/restart-nginx", asyncHandler("Restart nginx", async (_req, res) => {
+  await execFileAsync("sudo", ["nginx", "-s", "reload"], { timeout: 10_000 });
+  await storage.logActivity({ action: "system_nginx_restart", details: "nginx reloaded via dashboard" });
+  res.json({ ok: true });
+}));
+
+app.post("/api/system/restart-daemon", asyncHandler("Restart daemon", async (_req, res) => {
+  res.json({ ok: true });
+  await storage.logActivity({ action: "system_daemon_restart", details: "Daemon restart requested via dashboard" });
+  setTimeout(() => { execFile("pm2", ["restart", "scws-daemon"], () => {}); }, 500);
+}));
+
+app.post("/api/system/restart-all-pm2", asyncHandler("Restart all PM2", async (_req, res) => {
+  const raw = await execFileAsync("pm2", ["jlist"], { timeout: 10_000 });
+  const procs = JSON.parse(raw.stdout);
+  const names = procs.map((p: any) => p.name).filter((n: string) => n !== "scws-daemon");
+  for (const name of names) {
+    try { await execFileAsync("pm2", ["restart", name], { timeout: 15_000 }); } catch {}
+  }
+  await storage.logActivity({ action: "system_pm2_restart_all", details: `Restarted ${names.length} PM2 processes (excluding daemon)` });
+  res.json({ ok: true });
+}));
+
+app.post("/api/system/reboot", asyncHandler("Reboot system", async (_req, res) => {
+  res.json({ ok: true });
+  await storage.logActivity({ action: "system_reboot", details: "System reboot requested via dashboard" });
+  setTimeout(() => { execFile("sudo", ["reboot"], () => {}); }, 1000);
+}));
+
+app.post("/api/system/shutdown", asyncHandler("Shutdown system", async (_req, res) => {
+  res.json({ ok: true });
+  await storage.logActivity({ action: "system_shutdown", details: "System shutdown requested via dashboard" });
+  setTimeout(() => { execFile("sudo", ["shutdown", "-h", "now"], () => {}); }, 1000);
 }));
 
 // ── Server startup ───────────────────────────────────────────────

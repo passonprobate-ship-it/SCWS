@@ -2214,8 +2214,8 @@ function navigateClaude(projectName) {
 let aiToolsAvail = { claude: true, opencode: false };
 (async function fetchAiTools() {
   try {
-    const r = await fetch("/api/ai-tools");
-    if (r.ok) aiToolsAvail = await r.json();
+    aiToolsAvail = await api("/api/ai-tools");
+    if (typeof renderProjectCards === "function" && projectsList && projectsList.length) renderProjectCards();
   } catch {}
 })();
 
@@ -2223,6 +2223,22 @@ let aiToolsAvail = { claude: true, opencode: false };
 const claudeTerminals = {};      // { sessionId: { term, ws, fitAddon, projectName, container, tool } }
 let activeClaudeSessionId = null;
 const MAX_CLAUDE_UI_SESSIONS = 4;
+
+// Auto-reattach to any detached Claude sessions from before page refresh
+setTimeout(async () => {
+  try {
+    const _sd = await api("/api/terminal/sessions");
+    const serverClaude = (_sd.claude || []).filter(s => s.id);
+    if (serverClaude.length > 0 && Object.keys(claudeTerminals).length === 0) {
+      for (const s of serverClaude) {
+        if (Object.keys(claudeTerminals).length >= MAX_CLAUDE_UI_SESSIONS) break;
+        reattachClaudeSession(s.id, s.projectName, s.tool);
+      }
+      renderClaudeSessionTabs();
+      updateSessionsBadge();
+    }
+  } catch {}
+}, 1500);
 
 // Shared clipboard setup for session terminals — mirrors main terminal behavior
 function setupSessionClipboard(cterm, container, getWs) {
@@ -2462,7 +2478,7 @@ function createClaudeTerminal(projectName, tool) {
 
   // Connect WebSocket
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = proto + "//" + location.host + "/api/claude-terminal?token=" + encodeURIComponent(token)
+  const url = proto + "//" + location.host + "/api/claude/terminal?token=" + encodeURIComponent(token)
     + "&project=" + encodeURIComponent(projectName)
     + "&tool=" + encodeURIComponent(tool)
     + "&cols=" + cterm.cols + "&rows=" + cterm.rows;
@@ -2573,7 +2589,7 @@ function killClaudeSessionUI(sessionId) {
   if (!entry) return;
   // Kill on server
   if (entry.sessionId) {
-    api("/api/claude-terminal/sessions/" + entry.sessionId + "/kill", { method: "POST" }).catch(() => {});
+    api("/api/claude/terminal/sessions/" + entry.sessionId + "/kill", { method: "POST" }).catch(() => {});
   }
   cleanupClaudeSession(sessionId);
 }
@@ -2593,7 +2609,7 @@ function reconnectClaudeSession(sessionId) {
   entry.term.writeln("\r\n\x1b[36m[Reconnecting...]\x1b[0m");
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = proto + "//" + location.host + "/api/claude-terminal?token=" + encodeURIComponent(token)
+  const url = proto + "//" + location.host + "/api/claude/terminal?token=" + encodeURIComponent(token)
     + "&session=" + encodeURIComponent(entry.sessionId)
     + "&cols=" + entry.term.cols + "&rows=" + entry.term.rows;
   const ws = new WebSocket(url);
@@ -2707,7 +2723,8 @@ async function initSessionsPage() {
 
   // Check for existing server sessions to potentially reattach
   try {
-    const serverSessions = await api("/api/claude-terminal/sessions");
+    const _sessData = await api("/api/terminal/sessions");
+    const serverSessions = _sessData.claude || [];
     // Only show info — don't auto-reattach (user can click Claude on project card again)
     if (serverSessions.length > 0) {
       // Check if we already track these sessions locally
@@ -2780,7 +2797,7 @@ function reattachClaudeSession(sessionId, projectName, tool) {
   cterm.writeln("\x1b[36m[Reattaching " + toolLabel + " to " + projectName + " session " + sessionId + "...]\x1b[0m");
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = proto + "//" + location.host + "/api/claude-terminal?token=" + encodeURIComponent(token)
+  const url = proto + "//" + location.host + "/api/claude/terminal?token=" + encodeURIComponent(token)
     + "&session=" + encodeURIComponent(sessionId)
     + "&cols=" + cterm.cols + "&rows=" + cterm.rows;
   const ws = new WebSocket(url);
@@ -2948,7 +2965,7 @@ function renderSessionsOverview(data) {
 async function killSessionFromOverview(id, type) {
   try {
     if (type === "claude") {
-      await api(`/api/claude-terminal/sessions/${id}/kill`, { method: "POST" });
+      await api(`/api/claude/terminal/sessions/${id}/kill`, { method: "POST" });
       // Also clean up local UI if tracked
       if (claudeTerminals[id]) cleanupClaudeSession(id);
     }
@@ -3493,8 +3510,8 @@ async function connectTerminal() {
         headers: { "Authorization": `Bearer ${token}` },
       });
       if (res.ok) {
-        const sessions = await res.json();
-        const detached = sessions.filter(s => !s.attached);
+        const sessData = await res.json();
+        const detached = (sessData.terminal || []).filter(s => !s.attached);
         if (detached.length === 1) {
           // Auto-attach to the only detached session
           sessionParam = `&session=${encodeURIComponent(detached[0].id)}`;
@@ -3913,13 +3930,6 @@ async function loadSystem() {
           </div>` : ''}
         </div>
       </div>
-      <div class="card mt-12" id="memory-chart-card" style="display:none;">
-        <div class="flex-between" style="margin-bottom:8px;">
-          <span style="font-weight:600; font-size:13px;">Memory History (24h)</span>
-          <span id="memory-chart-range" style="font-size:11px; color:var(--text-muted);"></span>
-        </div>
-        <canvas id="memory-chart" height="80" style="width:100%;"></canvas>
-      </div>
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
         <div class="card">
           <div style="font-weight:600; margin-bottom:4px;">CPU Temperature</div>
@@ -3957,64 +3967,10 @@ async function loadSystem() {
     loadPM2Processes();
     loadWatchdog();
     loadNetworkStatus().then(() => renderNetworkCards());
-    loadMemoryChart();
     loadTimezone();
   } catch (err) {
     document.getElementById("system-info").innerHTML = `<div style="color:var(--red);">Failed: ${escapeHtml(err.message || String(err))}</div>`;
   }
-}
-
-async function loadMemoryChart() {
-  try {
-    const snapshots = await api("/api/metrics/memory?hours=24");
-    if (!snapshots || !snapshots.length) return;
-    const card = document.getElementById("memory-chart-card");
-    card.style.display = "block";
-    const canvas = document.getElementById("memory-chart");
-    const ctx = canvas.getContext("2d");
-    const dpr = window.devicePixelRatio || 1;
-    await new Promise(r => requestAnimationFrame(r));
-    const cw = canvas.offsetWidth || card.offsetWidth - 24;
-    if (!cw) { card.style.display = "none"; return; }
-    canvas.width = cw * dpr;
-    canvas.height = 80 * dpr;
-    ctx.scale(dpr, dpr);
-    const w = cw, h = 80;
-    const pcts = snapshots.map(s => {
-      const d = s.details ? (typeof s.details === "string" ? JSON.parse(s.details) : s.details) : s;
-      return d.memPct || d.mem_pct || d.usedPct || d.pct || 0;
-    });
-    if (!pcts.length || pcts.every(p => !p)) { card.style.display = "none"; return; }
-    const min = Math.max(0, Math.min(...pcts) - 5);
-    const max = Math.min(100, Math.max(...pcts) + 5);
-    const range = max - min || 1;
-    // Draw grid
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 4; i++) {
-      const y = h * i / 3;
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-    }
-    // Draw line
-    ctx.strokeStyle = "#7c6aef";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let i = 0; i < pcts.length; i++) {
-      const x = (i / (pcts.length - 1)) * w;
-      const y = h - ((pcts[i] - min) / range) * h;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    // Fill below
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(124,106,239,0.1)";
-    ctx.fill();
-    // Range label
-    const rangeEl = document.getElementById("memory-chart-range");
-    rangeEl.textContent = `${Math.round(Math.min(...pcts))}% — ${Math.round(Math.max(...pcts))}% (${pcts.length} samples)`;
-  } catch {}
 }
 
 async function loadPM2Processes() {
