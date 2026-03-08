@@ -668,7 +668,7 @@ app.get("/api/github/repos", asyncHandler("List GitHub repos", async (_req, res)
 app.get("/api/mcp/servers", asyncHandler("List MCP servers", async (_req, res) => {
   const settings = await readClaudeSettings();
   const servers = settings.mcpServers || {};
-  res.json(sanitizeAllServers(servers));
+  res.json({ servers: sanitizeAllServers(servers) });
 }));
 
 app.post("/api/mcp/servers", asyncHandler("Add MCP server", async (req, res) => {
@@ -907,27 +907,29 @@ app.post("/api/files/upload", asyncHandler("Upload files", async (req, res) => {
   }
   await mkdir(resolved, { recursive: true });
 
-  const busboy = (await import("busboy")).default;
-  const bb = busboy({ headers: req.headers, limits: { fileSize: 50 * 1024 * 1024 } });
+  // Use busboy via createRequire to avoid esbuild CJS/ESM wrapper issues
+  const { createRequire } = await import("module");
+  const req2 = createRequire(import.meta.url);
+  const Busboy = req2("busboy") as typeof import("busboy");
+  const bb = Busboy({ headers: req.headers, limits: { fileSize: 50 * 1024 * 1024 } });
   const uploaded: string[] = [];
+  const writePromises: Promise<void>[] = [];
 
   await new Promise<void>((resolveP, rejectP) => {
     bb.on("file", (_fieldname: string, stream: any, info: { filename: string }) => {
       const safeName = (info.filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, "_");
       const dest = join(resolved, safeName);
-      // Security: no path traversal
-      if (!dest.startsWith(resolved)) {
-        stream.resume();
-        return;
-      }
+      if (!dest.startsWith(resolved)) { stream.resume(); return; }
       const chunks: Buffer[] = [];
       stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-      stream.on("end", async () => {
+      const done = new Promise<void>((r) => stream.on("end", async () => {
         await writeFile(dest, Buffer.concat(chunks));
         uploaded.push(safeName);
-      });
+        r();
+      }));
+      writePromises.push(done);
     });
-    bb.on("finish", () => setTimeout(() => resolveP(), 50));
+    bb.on("finish", () => Promise.all(writePromises).then(() => resolveP()));
     bb.on("error", rejectP);
     req.pipe(bb);
   });
@@ -939,15 +941,26 @@ app.post("/api/files/upload", asyncHandler("Upload files", async (req, res) => {
 // ── Image upload ─────────────────────────────────────────────────
 
 app.post("/api/upload-image", asyncHandler("Upload image", async (req, res) => {
-  const { data, filename, projectName } = req.body;
-  if (!data || !projectName) { res.status(400).json({ error: "data and projectName are required" }); return; }
+  const { data, filename, projectName, mime } = req.body;
+  if (!data) { res.status(400).json({ error: "data is required" }); return; }
   const buffer = Buffer.from(data, "base64");
   if (buffer.length > 10 * 1024 * 1024) { res.status(400).json({ error: "Image too large (max 10MB)" }); return; }
-  const dir = `${PROJECTS_DIR}/${projectName}/public/images`;
+
+  // If projectName provided, save to project's public/images; otherwise save to shared tmp
+  const ext = mime ? "." + mime.split("/")[1]?.replace("jpeg", "jpg") : ".png";
+  const safeName = (filename || `upload-${Date.now()}${ext}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+  let dir: string;
+  let resultPath: string;
+  if (projectName) {
+    dir = `${PROJECTS_DIR}/${projectName}/public/images`;
+    resultPath = `public/images/${safeName}`;
+  } else {
+    dir = "/tmp/spawn-img";
+    resultPath = `/tmp/spawn-img/${safeName}`;
+  }
   await mkdir(dir, { recursive: true });
-  const safeName = (filename || `upload-${Date.now()}.png`).replace(/[^a-zA-Z0-9._-]/g, "_");
   await writeFile(`${dir}/${safeName}`, buffer);
-  res.json({ ok: true, path: `public/images/${safeName}` });
+  res.json({ ok: true, path: resultPath });
 }));
 
 // ── System info ──────────────────────────────────────────────────
@@ -972,13 +985,47 @@ app.get("/api/system", asyncHandler("System info", async (_req, res) => {
   } catch { info.disk = "unknown"; }
   try {
     const temp = await readFile("/sys/class/thermal/thermal_zone0/temp", "utf8");
-    info.cpuTemp = (parseInt(temp.trim()) / 1000).toFixed(1) + "\u00B0C";
+    info.cpuTemp = parseInt(temp.trim()) / 1000;
   } catch { info.cpuTemp = null; }
   try {
     const { stdout: tailscale } = await execFileAsync("tailscale", ["status", "--json"], { timeout: 5000 });
     const tsData = JSON.parse(tailscale);
     info.tailscale = { ip: tsData.Self?.TailscaleIPs?.[0], hostname: tsData.Self?.HostName, online: tsData.Self?.Online };
   } catch { info.tailscale = null; }
+  // Load average
+  try {
+    const la = await readFile("/proc/loadavg", "utf8");
+    const parts = la.trim().split(/\s+/);
+    info.loadAvg = { load1: parseFloat(parts[0]), load5: parseFloat(parts[1]), load15: parseFloat(parts[2]) };
+  } catch { info.loadAvg = null; }
+  // CPU cores
+  try {
+    const cpuinfo = await readFile("/proc/cpuinfo", "utf8");
+    info.cpuCores = (cpuinfo.match(/^processor/gm) || []).length;
+  } catch { info.cpuCores = 1; }
+  // Swap
+  try {
+    const { stdout: free } = await execFileAsync("free", ["-m"], { timeout: 5000 });
+    const swapLine = free.split("\n").find((l: string) => l.startsWith("Swap:"));
+    if (swapLine) {
+      const parts = swapLine.trim().split(/\s+/);
+      info.swap = { total: parseInt(parts[1]), used: parseInt(parts[2]), free: parseInt(parts[3]) };
+    }
+  } catch { info.swap = null; }
+  // Daemon process info
+  info.daemon = {
+    pid: process.pid,
+    nodeVersion: process.version,
+    uptime: process.uptime(),
+  };
+  // Project summary counts
+  try {
+    const allProjects = await storage.getProjects();
+    info.projects = {
+      total: allProjects.length,
+      running: allProjects.filter((p: any) => p.status === "running").length,
+    };
+  } catch { info.projects = { total: 0, running: 0 }; }
   res.json(info);
 }));
 
