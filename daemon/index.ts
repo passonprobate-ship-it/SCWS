@@ -41,6 +41,7 @@ import {
 import { registerOnboardingRoutes } from "./onboarding.js";
 import { registerConnectionsRoutes } from "./connections.js";
 import { registerNetworkRoutes } from "./network.js";
+import { registerAndroidRoutes } from "./android.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1186,6 +1187,7 @@ app.get("/api/claude-terminal/context/:projectName", asyncHandler("Preview Claud
 registerOnboardingRoutes(app);
 registerConnectionsRoutes(app);
 registerNetworkRoutes(app);
+registerAndroidRoutes(app);
 
 // ── Tailscale Funnel ─────────────────────────────────────────────
 

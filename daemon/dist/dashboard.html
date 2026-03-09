@@ -771,6 +771,54 @@
       #command-palette .modal { min-width: unset; margin: 0 16px; }
     }
 
+    /* ── Android Page ───────────────────────────── */
+    .android-status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .android-status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: .85rem;
+    }
+    .android-status-item .android-label { color: var(--text-secondary); }
+    .android-status-item .android-value { color: var(--text-primary); font-weight: 500; margin-left: auto; }
+    .android-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .android-dot.on { background: var(--green); }
+    .android-dot.off { background: var(--red, #e74c3c); }
+    .android-device-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: .85rem;
+    }
+    .android-device-card .device-info { display: flex; flex-direction: column; gap: 2px; }
+    .android-device-card .device-serial { font-weight: 500; color: var(--text-primary); }
+    .android-device-card .device-meta { font-size: .8rem; color: var(--text-muted); }
+    .android-build-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: .85rem;
+      margin-bottom: 6px;
+    }
+
     /* ── Funnel Page ────────────────────────────── */
     .funnel-hero {
       text-align: center;
@@ -1024,6 +1072,10 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><ellipse cx="8" cy="8" rx="3" ry="6" stroke="currentColor" stroke-width="1.3"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.3"/></svg></span>
           <span>Funnel</span>
           <span id="nav-funnel-badge" style="display:none;"></span>
+        </div>
+        <div class="nav-item" data-page="android">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 7.5h8v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5z" stroke="currentColor" stroke-width="1.3"/><path d="M5 7.5V6a3 3 0 0 1 6 0v1.5" stroke="currentColor" stroke-width="1.3"/><circle cx="6.5" cy="5" r=".7" fill="currentColor"/><circle cx="9.5" cy="5" r=".7" fill="currentColor"/><line x1="3.5" y1="3" x2="5" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="12.5" y1="3" x2="11" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="2.5" y1="9" x2="4" y2="9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="12" y1="9" x2="13.5" y2="9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+          <span>Android</span>
         </div>
       </div>
 
@@ -1612,6 +1664,64 @@
       </div>
     </div>
 
+    <!-- Android Page -->
+    <div id="page-android" class="page">
+      <div style="padding:24px;max-width:900px;">
+        <h2 style="margin:0 0 20px;font-size:1.5rem;">Android Development</h2>
+
+        <!-- SDK Status -->
+        <div style="margin-bottom:24px;">
+          <h3 style="margin:0 0 12px;font-size:1.1rem;color:var(--text-secondary);">SDK Status</h3>
+          <div class="android-status-grid" id="android-status-grid">
+            <div class="android-status-item"><span class="android-dot off"></span><span class="android-label">Loading...</span></div>
+          </div>
+        </div>
+
+        <!-- Connected Devices -->
+        <div style="margin-bottom:24px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <h3 style="margin:0;font-size:1.1rem;color:var(--text-secondary);">Connected Devices</h3>
+            <button class="btn btn-sm" onclick="scanAndroidDevices()">Scan</button>
+            <button class="btn btn-sm btn-outline" onclick="showConnectDeviceModal()">Connect by IP</button>
+          </div>
+          <div id="android-devices-list" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="color:var(--text-muted);font-size:.9rem;">Click Scan to detect devices</div>
+          </div>
+        </div>
+
+        <!-- Build History -->
+        <div style="margin-bottom:24px;">
+          <h3 style="margin:0 0 12px;font-size:1.1rem;color:var(--text-secondary);">Build History</h3>
+          <div id="android-builds-list">
+            <div style="color:var(--text-muted);font-size:.9rem;">No builds yet</div>
+          </div>
+        </div>
+
+        <!-- Settings -->
+        <div style="margin-bottom:24px;">
+          <h3 style="margin:0 0 12px;font-size:1.1rem;color:var(--text-secondary);">Settings</h3>
+          <div style="display:flex;flex-direction:column;gap:12px;max-width:500px;">
+            <label style="font-size:.85rem;color:var(--text-secondary);">SDK Path
+              <input type="text" id="android-sdk-path" class="input" style="margin-top:4px;" placeholder="/opt/android-sdk">
+            </label>
+            <label style="font-size:.85rem;color:var(--text-secondary);">Default Target SDK
+              <input type="text" id="android-target-sdk" class="input" style="margin-top:4px;" placeholder="34">
+            </label>
+            <label style="font-size:.85rem;color:var(--text-secondary);">Default Min SDK
+              <input type="text" id="android-min-sdk" class="input" style="margin-top:4px;" placeholder="24">
+            </label>
+            <label style="font-size:.85rem;color:var(--text-secondary);">Keystore Path
+              <input type="text" id="android-keystore-path" class="input" style="margin-top:4px;" placeholder="/path/to/keystore.jks">
+            </label>
+            <label style="font-size:.85rem;color:var(--text-secondary);">ADB Port
+              <input type="text" id="android-adb-port" class="input" style="margin-top:4px;" placeholder="5555">
+            </label>
+            <button class="btn" onclick="saveAndroidSettings()" style="align-self:flex-start;">Save Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Help Page -->
     <div id="page-setup" class="page">
       <div id="setup-content" style="padding: 24px; max-width: 720px;"></div>
@@ -2025,6 +2135,7 @@ function navigate(page, data) {
   if (page === "connections") loadConnections();
   if (page === "vps") loadVpsPage();
   if (page === "funnel") loadFunnelPage();
+  if (page === "android") loadAndroidPage();
   if (page === "setup") loadSetupPage();
   if (page === "help") loadHelpPage();
   if (page === "claude") initTerminalIfNeeded();
@@ -5308,6 +5419,7 @@ const HELP_TOPICS = [
       <div class="help-page-item"><strong>Connections <span class="help-kbd">Ctrl+8</span></strong><span>External service connections — GitHub repos, API integrations, and linked accounts.</span></div>
       <div class="help-page-item"><strong>VPS <span class="help-kbd">Ctrl+9</span></strong><span>Manage VPS deploy targets — view remote servers, deploy projects to external infrastructure.</span></div>
       <div class="help-page-item"><strong>Funnel</strong><span>Tailscale Funnel — expose projects publicly through Tailscale's reverse proxy without port forwarding.</span></div>
+      <div class="help-page-item"><strong>Android</strong><span>Android development — SDK status, ADB device management, build history, and settings for building and deploying APKs to connected Android devices.</span></div>
     </div>`
   },
   {
@@ -6882,6 +6994,155 @@ function timeAgo(dateStr) {
   if (days < 7) return days + "d ago";
   if (days < 30) return Math.floor(days / 7) + "w ago";
   return d.toLocaleDateString();
+}
+
+// ── Android Page ─────────────────────────────────────────────────
+
+async function loadAndroidPage() {
+  await Promise.all([refreshAndroidStatus(), scanAndroidDevices(), loadAndroidBuilds(), loadAndroidSettings()]);
+}
+
+async function refreshAndroidStatus() {
+  const grid = document.getElementById("android-status-grid");
+  if (!grid) return;
+  try {
+    const data = await api("/api/android/status");
+    grid.innerHTML = [
+      statusItem("JDK", data.java?.version || "Not installed", data.java?.installed),
+      statusItem("SDK Path", data.sdkPath || "—", data.sdkInstalled),
+      statusItem("Build Tools", data.buildTools?.join(", ") || "None", data.buildTools?.length > 0),
+      statusItem("Platform Tools", data.adb?.version ? "v" + data.adb.version : "Missing", data.platformTools),
+      statusItem("ADB", data.adb?.version || "Not found", data.adb?.installed),
+      statusItem("Platforms", data.platforms?.join(", ") || "None", data.platforms?.length > 0),
+      statusItem("SDK Manager", data.sdkManager?.version || "Missing", data.sdkManager?.installed),
+    ].join("");
+  } catch (e) {
+    grid.innerHTML = '<div class="android-status-item"><span class="android-dot off"></span><span class="android-label">Failed to load status</span></div>';
+  }
+}
+
+function statusItem(label, value, ok) {
+  return '<div class="android-status-item">' +
+    '<span class="android-dot ' + (ok ? "on" : "off") + '"></span>' +
+    '<span class="android-label">' + escapeHtml(label) + '</span>' +
+    '<span class="android-value">' + escapeHtml(String(value).slice(0, 40)) + '</span></div>';
+}
+
+async function scanAndroidDevices() {
+  const list = document.getElementById("android-devices-list");
+  if (!list) return;
+  list.innerHTML = '<div style="color:var(--text-muted);font-size:.9rem;">Scanning...</div>';
+  try {
+    const data = await api("/api/android/devices");
+    if (!data.devices || data.devices.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:.9rem;">No devices connected</div>';
+      return;
+    }
+    list.innerHTML = data.devices.map(d =>
+      '<div class="android-device-card">' +
+        '<div class="device-info">' +
+          '<span class="device-serial">' + escapeHtml(d.serial) + '</span>' +
+          '<span class="device-meta">' + escapeHtml((d.model || "") + " • " + d.state) + '</span>' +
+        '</div>' +
+        '<button class="btn btn-sm btn-danger" onclick="disconnectDevice(\'' + escapeHtml(d.serial) + '\')">Disconnect</button>' +
+      '</div>'
+    ).join("");
+  } catch {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:.9rem;">Failed to scan devices</div>';
+  }
+}
+
+function showConnectDeviceModal() {
+  showGenericModal({
+    title: "Connect Android Device",
+    fields: [
+      { label: "IP Address", placeholder: "100.x.x.x or 192.168.x.x" },
+      { label: "Port", placeholder: "5555", value: "5555" },
+    ],
+    confirmText: "Connect",
+    onConfirm: (values) => connectAndroidDevice(values[0], values[1]),
+  });
+}
+
+async function connectAndroidDevice(ip, port) {
+  if (!ip) { toast("IP address required", "error"); return; }
+  port = port || "5555";
+  try {
+    const data = await api("/api/android/devices/connect", { method: "POST", body: JSON.stringify({ ip, port }) });
+    toast(data.ok ? "Connected to " + ip : "Connection failed: " + (data.output || "unknown"), data.ok ? "success" : "error");
+    hideModal("generic-modal");
+    await scanAndroidDevices();
+  } catch (e) {
+    toast("Connect failed: " + e.message, "error");
+  }
+}
+
+async function disconnectDevice(serial) {
+  try {
+    await api("/api/android/devices/disconnect", { method: "POST", body: JSON.stringify({ serial }) });
+    toast("Disconnected " + serial, "success");
+    await scanAndroidDevices();
+  } catch (e) {
+    toast("Disconnect failed: " + e.message, "error");
+  }
+}
+
+async function loadAndroidBuilds() {
+  const list = document.getElementById("android-builds-list");
+  if (!list) return;
+  try {
+    const data = await api("/api/android/builds");
+    if (!data.builds || data.builds.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:.9rem;">No builds yet</div>';
+      return;
+    }
+    list.innerHTML = data.builds.map(b => {
+      let info;
+      try { info = JSON.parse(b.details); } catch { info = {}; }
+      const ok = info.success;
+      const dur = info.duration ? Math.round(info.duration / 1000) + "s" : "";
+      const size = info.apkSize ? (info.apkSize / 1048576).toFixed(1) + " MB" : "";
+      return '<div class="android-build-item">' +
+        '<span class="android-dot ' + (ok ? "on" : "off") + '"></span>' +
+        '<span style="font-weight:500;">' + escapeHtml(info.project || "?") + '</span>' +
+        '<span style="color:var(--text-muted);">' + escapeHtml(info.type || "") + '</span>' +
+        (dur ? '<span style="color:var(--text-muted);">' + dur + '</span>' : '') +
+        (size ? '<span style="color:var(--text-muted);">' + size + '</span>' : '') +
+        '<span style="margin-left:auto;color:var(--text-muted);font-size:.8rem;">' + escapeHtml(timeAgo(b.createdAt)) + '</span>' +
+      '</div>';
+    }).join("");
+  } catch {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:.9rem;">Failed to load builds</div>';
+  }
+}
+
+async function loadAndroidSettings() {
+  try {
+    const data = await api("/api/android/settings");
+    const el = id => document.getElementById(id);
+    if (data["android-sdk-path"]) el("android-sdk-path").value = data["android-sdk-path"];
+    if (data["android-default-target-sdk"]) el("android-target-sdk").value = data["android-default-target-sdk"];
+    if (data["android-default-min-sdk"]) el("android-min-sdk").value = data["android-default-min-sdk"];
+    if (data["android-keystore-path"]) el("android-keystore-path").value = data["android-keystore-path"];
+    if (data["android-adb-port"]) el("android-adb-port").value = data["android-adb-port"];
+  } catch { /* ignore */ }
+}
+
+async function saveAndroidSettings() {
+  const el = id => document.getElementById(id)?.value?.trim() || "";
+  const body = {
+    "android-sdk-path": el("android-sdk-path"),
+    "android-default-target-sdk": el("android-target-sdk"),
+    "android-default-min-sdk": el("android-min-sdk"),
+    "android-keystore-path": el("android-keystore-path"),
+    "android-adb-port": el("android-adb-port"),
+  };
+  try {
+    await api("/api/android/settings", { method: "PATCH", body: JSON.stringify(body) });
+    toast("Android settings saved", "success");
+  } catch (e) {
+    toast("Failed to save: " + e.message, "error");
+  }
 }
 
 // ── Funnel Page ──────────────────────────────────────────────────
