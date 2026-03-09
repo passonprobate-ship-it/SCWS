@@ -65,8 +65,9 @@ SPAWN/
 │   ├── deploy.ts        ← Build + SCP to production servers
 │   ├── notifications.ts ← Multi-channel notifications (Telegram, email, webhook, WhatsApp)
 │   ├── network.ts       ← WiFi scanning, netplan config, Tailscale Funnel
+│   ├── android.ts       ← Android SDK, ADB device mgmt, Gradle builds
 │   ├── onboarding.ts    ← First-run wizard
-│   └── dashboard.html   ← Single-file SPA (vanilla JS, 7200+ lines, 15+ pages)
+│   └── dashboard.html   ← Single-file SPA (vanilla JS, 7800+ lines, 16+ pages)
 └── script/build.ts      ← esbuild bundler
 ```
 
@@ -140,6 +141,8 @@ This playbook contains step-by-step recipes with exact API payloads, nginx templ
 - **Troubleshooting** commands
 
 Also see the **Project Creation Checklist** section below for the condensed step-by-step.
+
+**For Android/Kotlin projects**, see `/var/www/scws/docs/ANDROID-DEVELOPMENT.md` — covers ARM64 SDK setup, aapt2 workarounds, wireless ADB pairing, build/deploy API, and project scaffolding.
 
 ## Code Conventions
 
