@@ -604,6 +604,17 @@ if [[ "$MCP_EXISTS" -eq 0 ]]; then
   log "spawn-mcp project card registered in dashboard"
 fi
 
+# ── 14.5. Seed example projects ───────────────────────────────────────────
+
+if [[ -d "$SCWS_ROOT/examples" && -f "$SCWS_ROOT/scripts/seed-examples.sh" ]]; then
+  step "Installing example projects..."
+  bash "$SCWS_ROOT/scripts/seed-examples.sh" "$DASHBOARD_TOKEN" "$SPAWN_USER" 2>&1 | while read -r line; do
+    log "$line"
+  done
+else
+  log "No examples directory found — skipping example projects"
+fi
+
 # ── 15. Install auto-update cron ──────────────────────────────────────────
 
 step "Installing auto-update cron..."

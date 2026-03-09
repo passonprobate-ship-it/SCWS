@@ -116,6 +116,7 @@
     .badge-red { background: rgba(239,68,68,.12); color: var(--red); }
     .badge-amber { background: rgba(245,158,11,.12); color: var(--amber); }
     .badge-blue { background: rgba(59,130,246,.12); color: var(--blue); }
+    .badge-orange { background: rgba(249,115,22,.12); color: #f97316; }
     .badge-dim { background: rgba(255,255,255,.04); color: var(--text-muted); }
     .badge-accent { background: rgba(0,212,255,.1); color: var(--accent); }
 
@@ -2232,7 +2233,7 @@ async function loadProjects() {
 function renderProjectCards() {
   const grid = document.getElementById("projects-grid");
   grid.innerHTML = projectsList.map(p => {
-    const fwColor = p.framework === 'next' ? 'green' : p.framework === 'express' ? 'blue' : 'dim';
+    const fwColor = p.framework === 'next' ? 'green' : p.framework === 'express' ? 'blue' : p.framework === 'android' ? 'orange' : 'dim';
     const stats = projectStats[p.name] || {};
     const lastWorked = stats.lastActivity || p.updatedAt;
     const lastWorkedStr = lastWorked ? timeAgo(lastWorked) : '';
