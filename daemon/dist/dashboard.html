@@ -1683,7 +1683,8 @@
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
             <h3 style="margin:0;font-size:1.1rem;color:var(--text-secondary);">Connected Devices</h3>
             <button class="btn btn-sm" onclick="scanAndroidDevices()">Scan</button>
-            <button class="btn btn-sm btn-outline" onclick="showConnectDeviceModal()">Connect by IP</button>
+            <button class="btn btn-sm btn-outline" onclick="showPairDeviceModal()">Pair</button>
+            <button class="btn btn-sm btn-outline" onclick="showConnectDeviceModal()">Connect</button>
           </div>
           <div id="android-devices-list" style="display:flex;flex-direction:column;gap:8px;">
             <div style="color:var(--text-muted);font-size:.9rem;">Click Scan to detect devices</div>
@@ -7053,6 +7054,28 @@ async function scanAndroidDevices() {
   }
 }
 
+function showPairDeviceModal() {
+  showGenericModal({
+    title: "Pair Android Device",
+    fields: [
+      { label: "IP Address", placeholder: "100.x.x.x" },
+      { label: "Pairing Port (from phone)", placeholder: "37000" },
+      { label: "6-Digit Pairing Code", placeholder: "123456" },
+    ],
+    confirmText: "Pair",
+    onConfirm: async (values) => {
+      const [ip, port, code] = values;
+      if (!ip || !port || !code) { toast("All fields required", "error"); return; }
+      try {
+        const data = await api("/api/android/devices/pair", { method: "POST", body: { ip, port, code } });
+        toast(data.ok ? "Paired successfully! Now click Connect." : "Pairing failed: " + (data.output || "unknown"), data.ok ? "success" : "error");
+      } catch (e) {
+        toast("Pair failed: " + e.message, "error");
+      }
+    },
+  });
+}
+
 function showConnectDeviceModal() {
   showGenericModal({
     title: "Connect Android Device",
@@ -7069,7 +7092,7 @@ async function connectAndroidDevice(ip, port) {
   if (!ip) { toast("IP address required", "error"); return; }
   port = port || "5555";
   try {
-    const data = await api("/api/android/devices/connect", { method: "POST", body: JSON.stringify({ ip, port }) });
+    const data = await api("/api/android/devices/connect", { method: "POST", body: { ip, port } });
     toast(data.ok ? "Connected to " + ip : "Connection failed: " + (data.output || "unknown"), data.ok ? "success" : "error");
     hideModal("generic-modal");
     await scanAndroidDevices();
@@ -7080,7 +7103,7 @@ async function connectAndroidDevice(ip, port) {
 
 async function disconnectDevice(serial) {
   try {
-    await api("/api/android/devices/disconnect", { method: "POST", body: JSON.stringify({ serial }) });
+    await api("/api/android/devices/disconnect", { method: "POST", body: { serial } });
     toast("Disconnected " + serial, "success");
     await scanAndroidDevices();
   } catch (e) {
@@ -7139,7 +7162,7 @@ async function saveAndroidSettings() {
     "android-adb-port": el("android-adb-port"),
   };
   try {
-    await api("/api/android/settings", { method: "PATCH", body: JSON.stringify(body) });
+    await api("/api/android/settings", { method: "PATCH", body });
     toast("Android settings saved", "success");
   } catch (e) {
     toast("Failed to save: " + e.message, "error");

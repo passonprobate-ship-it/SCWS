@@ -142,6 +142,41 @@ export function registerAndroidRoutes(app: Application): void {
     res.json({ devices });
   }));
 
+  // POST /api/android/devices/pair — adb pair ip:port code
+  app.post("/api/android/devices/pair", asyncHandler("ADB pair", async (req, res) => {
+    const { ip, port, code } = req.body || {};
+    if (!ip || typeof ip !== "string") { res.status(400).json({ error: "ip required" }); return; }
+    if (!port || typeof port !== "string") { res.status(400).json({ error: "port required" }); return; }
+    if (!code || typeof code !== "string") { res.status(400).json({ error: "pairing code required" }); return; }
+    if (!/^[\d.:a-fA-F]+$/.test(ip)) { res.status(400).json({ error: "invalid ip format" }); return; }
+    if (!/^\d+$/.test(port)) { res.status(400).json({ error: "invalid port" }); return; }
+    if (!/^\d{6}$/.test(code)) { res.status(400).json({ error: "pairing code must be 6 digits" }); return; }
+
+    const target = `${ip}:${port}`;
+    try {
+      // adb pair requires the code via stdin
+      const child = execFile("adb", ["pair", target], { timeout: 30_000 }, (err, stdout, stderr) => {});
+      // Use spawn approach — adb pair reads code from stdin
+      const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        let out = "", err = "";
+        const proc = execFile("adb", ["pair", target, code], { timeout: 30_000 });
+        proc.stdout?.on("data", d => out += d);
+        proc.stderr?.on("data", d => err += d);
+        proc.on("close", () => resolve({ stdout: out.trim(), stderr: err.trim() }));
+        proc.on("error", e => reject(e));
+      });
+      // Kill the unused child
+      child.kill();
+
+      const output = stdout || stderr;
+      const paired = output.toLowerCase().includes("successfully paired");
+      await storage.logActivity({ action: "adb_pair", details: `adb pair ${target}: ${output}` });
+      res.json({ ok: paired, output });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message || String(e) });
+    }
+  }));
+
   // POST /api/android/devices/connect — adb connect ip:port
   app.post("/api/android/devices/connect", asyncHandler("ADB connect", async (req, res) => {
     const { ip, port } = req.body || {};
