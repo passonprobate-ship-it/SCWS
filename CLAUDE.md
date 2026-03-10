@@ -39,7 +39,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 /var/www/scws/
 ├── daemon/              ← The control plane (Express 5, port 4000)
 │   ├── dist/index.cjs   ← Built daemon bundle
-│   ├── dist/dashboard.html ← Web dashboard SPA
+│   ├── dist/dashboard.html ← Web dashboard SPA (~8100 lines)
 │   ├── .env             ← DATABASE_URL, DASHBOARD_TOKEN, etc.
 │   └── ecosystem.config.cjs ← PM2 config
 ├── projects/            ← Your creations live here
@@ -224,6 +224,22 @@ Every new project must complete ALL of these steps:
 - `pm2 restart all` — restarts every process including the daemon; always restart projects individually by name
 - `pm2 restart scws-daemon` — only when daemon files changed (see above)
 - Dashboard "Restart Daemon" button — same as above
+
+## Claude Code CLI Commands
+
+You run inside `claude` (the Claude Code CLI). Know these built-in commands:
+
+| Command | What it does |
+|---------|-------------|
+| `/remote-control` | Connects this session to the Claude mobile app — user can drive you from their phone |
+| `/clear` | Clears conversation context |
+| `/help` | Shows help |
+| `/fast` | Toggles fast mode (same model, faster output) |
+| `/compact` | Compacts conversation to save context |
+
+These are **built-in CLI commands** — do NOT invoke them via the Skill tool. Skills (like `/commit`, `/review-pr`) are different and ARE invoked via the Skill tool.
+
+The `/remote-control` feature is particularly useful — the user often controls SPAWN from their phone while away from the desk. When connected via remote control, work the same way: be autonomous, execute tasks, report results concisely.
 
 ## Rules
 

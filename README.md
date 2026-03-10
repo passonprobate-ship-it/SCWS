@@ -131,7 +131,7 @@ If something breaks, it reads the logs, diagnoses the issue, fixes it, and redep
 /var/www/scws/
 ├── daemon/                   ← Control plane (Express 5, port 4000)
 │   ├── dist/index.cjs        ← Built daemon bundle
-│   ├── dist/dashboard.html   ← Web dashboard SPA (single-file, ~7400 lines)
+│   ├── dist/dashboard.html   ← Web dashboard SPA (single-file, ~8100 lines)
 │   ├── .env                  ← DATABASE_URL, DASHBOARD_TOKEN, etc.
 │   └── ecosystem.config.cjs  ← PM2 config with heap caps
 ├── projects/                 ← AI-created projects live here
@@ -164,7 +164,7 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 |------|----------|-------------|
 | Terminal | `Ctrl+J` | Interactive AI terminal — type prompts and watch it work |
 | Sessions | — | View and resume previous AI sessions (Claude and OpenCode) |
-| Projects | `Ctrl+1` | Create, start, stop, build, deploy, view logs |
+| Projects | `Ctrl+1` | Search, sort, grid/list views, create, start, stop, build, deploy |
 | System | `Ctrl+2` | CPU, memory, disk, temperature, PM2 process status |
 | Activity | `Ctrl+3` | Timeline of all actions |
 | MCP | `Ctrl+4` | MCP server status and persistent memory |

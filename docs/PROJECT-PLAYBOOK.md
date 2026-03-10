@@ -465,7 +465,7 @@ Or use the dashboard's "Import" feature which does detection + setup automatical
 
 ## Recipe 8: Export a Project
 
-The dashboard has an "Export" button on each project card. It creates a `.zip` file of the project (excluding `node_modules/`, `.env`, `dist/`, `.git/`) for download.
+The dashboard has an "Export" button on each project card (and in the compact list view). It creates a `.zip` file of the project (excluding `node_modules/`, `.env`, `dist/`, `.git/`) for download.
 
 Via API:
 
@@ -474,6 +474,33 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   http://localhost:4000/api/projects/my-app/export \
   -o my-app.zip
 ```
+
+---
+
+## Projects Page Features
+
+The Projects page in the dashboard includes a toolbar with search, sorting, and view controls. All preferences persist in `localStorage` across page refreshes.
+
+### Search
+Real-time filter across project name, displayName, framework, status, port, gitRepo, and dbName. Both grid cards and compact list rows filter simultaneously.
+
+### Sorting
+| Sort Key | Behavior |
+|---|---|
+| Recently Active (default) | Most recent activity first (from `/api/projects/stats` or `updatedAt`) |
+| Name A-Z / Z-A | Alphabetical by displayName |
+| Oldest Activity | Least recently active first |
+| Port ascending/descending | Numeric port order |
+| Status | Running > building > error > stopped, then alphabetical |
+| Framework | Alphabetical by framework, then by name |
+
+### View Modes
+- **Grid** (default) — Card layout with full stats, git links, quick actions
+- **List** — Compact single-row layout with status dot, name, framework badge, port, status, last active, and action buttons (Start/Stop, Build, Edit, Claude)
+
+### localStorage Keys
+- `spawn-projects-view` — `'grid'` or `'list'`
+- `spawn-projects-sort` — sort key string (e.g., `'recent'`, `'name-asc'`, `'status'`)
 
 ---
 
@@ -645,7 +672,7 @@ pm2 restart my-app
 
 ## Dashboard HTML Editing Guide
 
-The dashboard is a single-file SPA at `daemon/dist/dashboard.html` (7200+ lines, vanilla JS). The daemon is a bundled file at `daemon/dist/index.cjs` (single line).
+The dashboard is a single-file SPA at `daemon/dist/dashboard.html` (8100+ lines, vanilla JS). The daemon is a bundled file at `daemon/dist/index.cjs` (single line).
 
 **Editing dashboard.html** is straightforward — it's readable HTML/CSS/JS. Search for function names or HTML patterns.
 
