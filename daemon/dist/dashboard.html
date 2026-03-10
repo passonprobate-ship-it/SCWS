@@ -166,6 +166,27 @@
     .status-dot.error { background: var(--red); box-shadow: 0 0 6px var(--red); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
+    /* ── Projects Toolbar ─────────────────────── */
+    .projects-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .projects-toolbar .input { margin: 0; }
+    .projects-toolbar #projects-search { flex: 1; min-width: 180px; }
+    .projects-toolbar #projects-sort { width: auto; min-width: 150px; }
+    .view-toggle { display: flex; gap: 2px; }
+    .view-toggle .btn { min-width: 34px; padding: 6px 8px; font-size: 16px; line-height: 1; }
+    .view-toggle .btn.active { background: var(--accent); color: #fff; }
+
+    /* ── Compact List View ────────────────────── */
+    .project-list { display: flex; flex-direction: column; gap: 2px; }
+    .project-row {
+      display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+      cursor: pointer; transition: background 0.15s;
+    }
+    .project-row:hover { background: var(--card-hover, rgba(255,255,255,0.03)); }
+    .project-row .pr-name { font-weight: 600; font-size: 13px; min-width: 120px; white-space: nowrap; }
+    .project-row .pr-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 12px; align-items: center; flex: 1; min-width: 0; flex-wrap: wrap; }
+    .project-row .pr-actions { display: flex; gap: 4px; align-items: center; margin-left: auto; flex-shrink: 0; }
+
     /* ── Log viewer ────────────────────────────── */
     .log-viewer {
       background: #050508; border: 1px solid var(--border); border-radius: var(--radius);
@@ -766,6 +787,11 @@
       .nav-separator { margin: 4px 8px; }
       .main-scroll { padding: 16px; }
       .project-grid { grid-template-columns: 1fr; }
+      .project-list .project-row { flex-wrap: wrap; }
+      .project-row .pr-actions { width: 100%; margin-top: 4px; }
+      .projects-toolbar { flex-direction: column; }
+      .projects-toolbar #projects-search { min-width: unset; width: 100%; }
+      .projects-toolbar #projects-sort { width: 100%; }
       .modal { min-width: unset; margin: 16px; }
       .claude-msg-user { margin-left: 0; }
       .claude-msg-assistant { margin-right: 0; }
@@ -1077,6 +1103,7 @@
         <div class="nav-item" data-page="android">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 7.5h8v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5z" stroke="currentColor" stroke-width="1.3"/><path d="M5 7.5V6a3 3 0 0 1 6 0v1.5" stroke="currentColor" stroke-width="1.3"/><circle cx="6.5" cy="5" r=".7" fill="currentColor"/><circle cx="9.5" cy="5" r=".7" fill="currentColor"/><line x1="3.5" y1="3" x2="5" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="12.5" y1="3" x2="11" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="2.5" y1="9" x2="4" y2="9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="12" y1="9" x2="13.5" y2="9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
           <span>Android</span>
+          <span id="nav-android-badge" class="nav-badge" style="display:none;"></span>
         </div>
       </div>
 
@@ -1163,7 +1190,25 @@
         <button class="btn" id="upload-zip-btn" onclick="triggerZipUpload()">Upload Zip</button>
         <input type="file" id="zip-file-input" accept=".zip" style="display:none;" onchange="handleZipFile(event)">
       </div>
+      <div class="projects-toolbar mt-12">
+        <input class="input" id="projects-search" placeholder="Search projects..." oninput="filterProjects()">
+        <select id="projects-sort" class="input" onchange="sortAndRenderProjects()">
+          <option value="recent">Recently Active</option>
+          <option value="name-asc">Name A→Z</option>
+          <option value="name-desc">Name Z→A</option>
+          <option value="oldest">Oldest Activity</option>
+          <option value="port-asc">Port ↑</option>
+          <option value="port-desc">Port ↓</option>
+          <option value="status">Status (running first)</option>
+          <option value="framework">Framework</option>
+        </select>
+        <div class="view-toggle">
+          <button id="view-grid-btn" class="btn btn-sm active" onclick="setProjectView('grid')" title="Card view">&#9638;</button>
+          <button id="view-list-btn" class="btn btn-sm" onclick="setProjectView('list')" title="Compact list">&#9776;</button>
+        </div>
+      </div>
       <div id="projects-grid" class="project-grid mt-12"></div>
+      <div id="projects-list" class="project-list mt-12" style="display:none;"></div>
       <div id="projects-empty" style="display:none; text-align:center; padding:60px; color:var(--text-muted); font-size:13px;">
         No projects yet. Import a repo or create one to get started.
       </div>
@@ -1685,6 +1730,7 @@
             <button class="btn btn-sm" onclick="scanAndroidDevices()">Scan</button>
             <button class="btn btn-sm btn-outline" onclick="showPairDeviceModal()">Pair</button>
             <button class="btn btn-sm btn-outline" onclick="showConnectDeviceModal()">Connect</button>
+            <button class="btn btn-sm" onclick="quickReconnectDevice()" title="Reconnect to last device">Reconnect</button>
           </div>
           <div id="android-devices-list" style="display:flex;flex-direction:column;gap:8px;">
             <div style="color:var(--text-muted);font-size:.9rem;">Click Scan to detect devices</div>
@@ -2206,34 +2252,52 @@ function switchTab(el, tabId) {
 
 // ── Projects ──────────────────────────────────────────────────────
 let projectStats = {};
+let projectsView = localStorage.getItem('spawn-projects-view') || 'grid';
+let projectsSortKey = localStorage.getItem('spawn-projects-sort') || 'recent';
+let filteredProjectsList = null;
 
 async function loadProjects() {
   try {
     projectsList = await api("/api/projects");
     const grid = document.getElementById("projects-grid");
+    const listEl = document.getElementById("projects-list");
     const empty = document.getElementById("projects-empty");
+
+    // Restore saved preferences
+    const savedView = localStorage.getItem('spawn-projects-view');
+    if (savedView) { projectsView = savedView; }
+    const savedSort = localStorage.getItem('spawn-projects-sort');
+    if (savedSort) {
+      projectsSortKey = savedSort;
+      const sortEl = document.getElementById('projects-sort');
+      if (sortEl) sortEl.value = savedSort;
+    }
+    applyProjectViewToggle();
 
     if (!projectsList.length) {
       grid.innerHTML = "";
+      if (listEl) listEl.innerHTML = "";
       empty.style.display = "block";
       return;
     }
     empty.style.display = "none";
-    renderProjectCards();
+    filteredProjectsList = null;
+    sortAndRenderProjects();
 
     // Fetch disk stats async — don't block initial render
     try {
       projectStats = await api("/api/projects/stats");
-      renderProjectCards();
+      sortAndRenderProjects();
     } catch { /* stats are optional */ }
   } catch (err) {
     console.error("Failed to load projects:", err);
   }
 }
 
-function renderProjectCards() {
+function renderProjectCards(list) {
   const grid = document.getElementById("projects-grid");
-  grid.innerHTML = projectsList.map(p => {
+  list = list || projectsList;
+  grid.innerHTML = list.map(p => {
     const fwColor = p.framework === 'next' ? 'green' : p.framework === 'express' ? 'blue' : p.framework === 'android' ? 'orange' : 'dim';
     const stats = projectStats[p.name] || {};
     const lastWorked = stats.lastActivity || p.updatedAt;
@@ -2276,6 +2340,115 @@ function renderProjectCards() {
       </div>
     </div>`;
   }).join("");
+}
+
+function filterProjects() {
+  const q = (document.getElementById('projects-search').value || '').toLowerCase().trim();
+  if (!q) {
+    filteredProjectsList = null;
+  } else {
+    filteredProjectsList = projectsList.filter(p => {
+      const hay = [p.name, p.displayName, p.framework, p.status, String(p.port), p.gitRepo || '', p.dbName || ''].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  sortAndRenderProjects();
+}
+
+function getProjectSortedList() {
+  const list = (filteredProjectsList || projectsList).slice();
+  const key = projectsSortKey;
+  const statusOrder = { running: 0, building: 1, error: 2, stopped: 3 };
+  list.sort((a, b) => {
+    switch (key) {
+      case 'name-asc': return (a.displayName || a.name).localeCompare(b.displayName || b.name);
+      case 'name-desc': return (b.displayName || b.name).localeCompare(a.displayName || a.name);
+      case 'recent': {
+        const sa = projectStats[a.name] || {}, sb = projectStats[b.name] || {};
+        const ta = new Date(sa.lastActivity || a.updatedAt || 0).getTime();
+        const tb = new Date(sb.lastActivity || b.updatedAt || 0).getTime();
+        return tb - ta;
+      }
+      case 'oldest': {
+        const sa = projectStats[a.name] || {}, sb = projectStats[b.name] || {};
+        const ta = new Date(sa.lastActivity || a.updatedAt || 0).getTime();
+        const tb = new Date(sb.lastActivity || b.updatedAt || 0).getTime();
+        return ta - tb;
+      }
+      case 'port-asc': return (a.port || 0) - (b.port || 0);
+      case 'port-desc': return (b.port || 0) - (a.port || 0);
+      case 'status': {
+        const d = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4);
+        return d !== 0 ? d : (a.displayName || a.name).localeCompare(b.displayName || b.name);
+      }
+      case 'framework': {
+        const d = (a.framework || '').localeCompare(b.framework || '');
+        return d !== 0 ? d : (a.displayName || a.name).localeCompare(b.displayName || b.name);
+      }
+      default: return 0;
+    }
+  });
+  return list;
+}
+
+function sortAndRenderProjects() {
+  const sortEl = document.getElementById('projects-sort');
+  if (sortEl) {
+    projectsSortKey = sortEl.value;
+    localStorage.setItem('spawn-projects-sort', projectsSortKey);
+  }
+  const sorted = getProjectSortedList();
+  renderProjectCards(sorted);
+  renderProjectList(sorted);
+}
+
+function renderProjectList(list) {
+  const el = document.getElementById('projects-list');
+  if (!el) return;
+  list = list || projectsList;
+  el.innerHTML = list.map(p => {
+    const fwColor = p.framework === 'next' ? 'green' : p.framework === 'express' ? 'blue' : p.framework === 'android' ? 'orange' : 'dim';
+    const stats = projectStats[p.name] || {};
+    const lastWorked = stats.lastActivity || p.updatedAt;
+    const lastWorkedStr = lastWorked ? timeAgo(lastWorked) : '';
+    return `
+    <div class="project-row" onclick="navigate('project-detail', '${p.name}')">
+      <span class="status-dot ${p.status}"></span>
+      <span class="pr-name">${escapeHtml(p.displayName)}</span>
+      <span class="pr-meta">
+        <span class="badge badge-${fwColor}" style="font-size:10px;">${p.framework}</span>
+        <span>:${p.port}</span>
+        <span>${p.status}</span>
+        ${lastWorkedStr ? `<span>${lastWorkedStr}</span>` : ''}
+      </span>
+      <span class="pr-actions">
+        ${p.status === 'running' || p.status === 'error'
+          ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); quickAction('${p.name}','stop')">Stop</button>
+             <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','restart')">↺</button>`
+          : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); quickAction('${p.name}','start')">Start</button>`}
+        <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','build')">Build</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); openProjectInEditor('${p.name}')">Edit</button>
+        <button class="btn btn-sm btn-claude" onclick="event.stopPropagation(); openClaudeSession('${p.name}')">Claude</button>
+      </span>
+    </div>`;
+  }).join("");
+}
+
+function setProjectView(view) {
+  projectsView = view;
+  localStorage.setItem('spawn-projects-view', view);
+  applyProjectViewToggle();
+}
+
+function applyProjectViewToggle() {
+  const grid = document.getElementById('projects-grid');
+  const list = document.getElementById('projects-list');
+  const gridBtn = document.getElementById('view-grid-btn');
+  const listBtn = document.getElementById('view-list-btn');
+  if (grid) grid.style.display = projectsView === 'grid' ? '' : 'none';
+  if (list) list.style.display = projectsView === 'list' ? '' : 'none';
+  if (gridBtn) gridBtn.classList.toggle('active', projectsView === 'grid');
+  if (listBtn) listBtn.classList.toggle('active', projectsView === 'list');
 }
 
 async function quickAction(name, action) {
@@ -2328,7 +2501,7 @@ let aiToolsAvail = { claude: true, opencode: false };
 (async function fetchAiTools() {
   try {
     aiToolsAvail = await api("/api/ai-tools");
-    if (typeof renderProjectCards === "function" && projectsList && projectsList.length) renderProjectCards();
+    if (typeof sortAndRenderProjects === "function" && projectsList && projectsList.length) sortAndRenderProjects();
   } catch {}
 })();
 
@@ -2353,105 +2526,130 @@ setTimeout(async () => {
   } catch {}
 }, 1500);
 
-// Shared clipboard setup for session terminals — mirrors main terminal behavior
-function setupSessionClipboard(cterm, container, getWs) {
-  // Copy fallback for HTTP
-  function copyFallback(text) {
+// ── Shared session clipboard helpers ──────────────────────────────
+// These use the activeClaudeSessionId / claudeTerminals globals so
+// the paste always targets the currently-visible session, not a stale closure.
+let _sessionPasteIntercepted = false;
+
+function _getActiveSessionWs() {
+  if (!activeClaudeSessionId) return null;
+  const entry = claudeTerminals[activeClaudeSessionId];
+  return entry && entry.ws && entry.ws.readyState === WebSocket.OPEN ? entry.ws : null;
+}
+
+function _sessionCopyFallback(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  document.body.removeChild(ta);
+}
+
+async function _sessionUploadAndInsert(blob, mime) {
+  const ws = _getActiveSessionWs();
+  if (!ws) return;
+  try {
+    const buf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+    const res = await fetch("/api/upload-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ data: base64, mime }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast(err.error || "Image upload failed", "error");
+      return;
+    }
+    const { path } = await res.json();
+    ws.send(JSON.stringify({ type: "input", data: path + " " }));
+    toast("Image pasted: " + path, "success", 3000);
+  } catch (err) {
+    toast("Image upload failed: " + err.message, "error");
+  }
+}
+
+async function _sessionPasteFromClipboard() {
+  const ws = _getActiveSessionWs();
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imgType = item.types.find(t => t.startsWith("image/"));
+        if (imgType) {
+          const blob = await item.getType(imgType);
+          await _sessionUploadAndInsert(blob, imgType);
+          return;
+        }
+        if (item.types.includes("text/plain")) {
+          const textBlob = await item.getType("text/plain");
+          const text = await textBlob.text();
+          if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
+          return;
+        }
+      }
+    } catch {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
+      } catch { /* ignore */ }
+    }
+  } else {
+    // HTTP fallback: hidden textarea trick (text only — images handled by
+    // document-level paste listener below)
     const ta = document.createElement("textarea");
-    ta.value = text;
     ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
     document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
+    ta.focus();
+    document.execCommand("paste");
+    if (ta.value && ws) ws.send(JSON.stringify({ type: "input", data: ta.value }));
     document.body.removeChild(ta);
+    // Refocus active session terminal
+    const entry = claudeTerminals[activeClaudeSessionId];
+    if (entry) entry.term.focus();
   }
+}
 
-  // Upload image and insert path into terminal
-  async function uploadAndInsert(blob, mime) {
-    const ws = getWs();
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    try {
-      const buf = await blob.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const base64 = btoa(binary);
-      const res = await fetch("/api/upload-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ data: base64, mime }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast(err.error || "Image upload failed", "error");
-        return;
+// Single document-level paste listener for ALL session terminals (capture phase).
+// On HTTP, Ctrl+V sets _sessionPasteIntercepted=true so this listener can grab
+// image data from clipboardData before xterm.js consumes the event.
+document.addEventListener("paste", async (e) => {
+  if (!_sessionPasteIntercepted) return;
+  _sessionPasteIntercepted = false;
+  e.preventDefault();
+  e.stopPropagation();
+  const ws = _getActiveSessionWs();
+  const items = e.clipboardData?.items;
+  if (items) {
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const blob = item.getAsFile();
+        if (blob) { await _sessionUploadAndInsert(blob, item.type); return; }
       }
-      const { path } = await res.json();
-      ws.send(JSON.stringify({ type: "input", data: path + " " }));
-      toast("Image saved: " + path, "success", 3000);
-    } catch (err) {
-      toast("Image upload failed: " + err.message, "error");
     }
   }
+  const text = (e.clipboardData || window.clipboardData)?.getData("text");
+  if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
+}, true);
 
-  // Paste from clipboard (secure context / HTTPS)
-  async function pasteFromClipboard() {
-    const ws = getWs();
-    if (navigator.clipboard && window.isSecureContext) {
-      try {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          const imgType = item.types.find(t => t.startsWith("image/"));
-          if (imgType) {
-            const blob = await item.getType(imgType);
-            await uploadAndInsert(blob, imgType);
-            return;
-          }
-          if (item.types.includes("text/plain")) {
-            const textBlob = await item.getType("text/plain");
-            const text = await textBlob.text();
-            if (text && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "input", data: text }));
-            }
-            return;
-          }
-        }
-      } catch {
-        try {
-          const text = await navigator.clipboard.readText();
-          if (text && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "input", data: text }));
-          }
-        } catch { /* ignore */ }
-      }
-    } else {
-      // HTTP fallback: hidden textarea trick
-      const ta = document.createElement("textarea");
-      ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
-      document.body.appendChild(ta);
-      ta.focus();
-      document.execCommand("paste");
-      if (ta.value && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "input", data: ta.value }));
-      }
-      document.body.removeChild(ta);
-      cterm.focus();
-    }
-  }
-
+// Per-session clipboard wiring — attaches key handlers and selection-copy to
+// an individual xterm instance but delegates paste to the shared helpers above.
+function setupSessionClipboard(cterm, container, getWs) {
   // Auto-copy on selection (with fallback)
   cterm.onSelectionChange(() => {
     const sel = cterm.getSelection();
     if (!sel) return;
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(sel).catch(() => copyFallback(sel));
+      navigator.clipboard.writeText(sel).catch(() => _sessionCopyFallback(sel));
     } else {
-      copyFallback(sel);
+      _sessionCopyFallback(sel);
     }
   });
-
-  // HTTP paste interception flag
-  let pasteIntercepted = false;
 
   // Custom key handler: Ctrl+V, Ctrl+Shift+C, Alt+V
   cterm.attachCustomKeyEventHandler((e) => {
@@ -2461,9 +2659,9 @@ function setupSessionClipboard(cterm, container, getWs) {
       const sel = cterm.getSelection();
       if (sel) {
         if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(sel).catch(() => copyFallback(sel));
+          navigator.clipboard.writeText(sel).catch(() => _sessionCopyFallback(sel));
         } else {
-          copyFallback(sel);
+          _sessionCopyFallback(sel);
         }
       }
       return false;
@@ -2471,18 +2669,18 @@ function setupSessionClipboard(cterm, container, getWs) {
     // Ctrl+V or Ctrl+Shift+V → paste
     if (e.ctrlKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
-        pasteFromClipboard();
+        _sessionPasteFromClipboard();
       } else {
-        pasteIntercepted = true;
+        _sessionPasteIntercepted = true;
       }
       return false;
     }
     // Alt+V → paste (Claude CLI image shortcut)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
-        pasteFromClipboard();
+        _sessionPasteFromClipboard();
       } else {
-        pasteIntercepted = true;
+        _sessionPasteIntercepted = true;
       }
       return false;
     }
@@ -2492,32 +2690,31 @@ function setupSessionClipboard(cterm, container, getWs) {
   // Right-click paste
   container.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    pasteFromClipboard();
+    _sessionPasteFromClipboard();
   });
 
-  // Document-level paste listener (capture phase) for HTTP image paste
-  if (window._pasteListenerAdded) return;
-  window._pasteListenerAdded = true;
-  document.addEventListener("paste", async (e) => {
-    if (!pasteIntercepted) return;
-    pasteIntercepted = false;
+  // Drag-and-drop image support
+  container.addEventListener("dragover", (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    const ws = getWs();
-    const items = e.clipboardData?.items;
-    if (items) {
-      for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const blob = item.getAsFile();
-          if (blob) { await uploadAndInsert(blob, item.type); return; }
+    e.dataTransfer.dropEffect = "copy";
+    container.style.outline = "2px solid #00d4ff";
+  });
+  container.addEventListener("dragleave", () => {
+    container.style.outline = "";
+  });
+  container.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    container.style.outline = "";
+    const files = e.dataTransfer?.files;
+    if (files) {
+      for (const file of files) {
+        if (file.type.startsWith("image/")) {
+          await _sessionUploadAndInsert(file, file.type);
+          return;
         }
       }
     }
-    const text = (e.clipboardData || window.clipboardData)?.getData("text");
-    if (text && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", data: text }));
-    }
-  }, true);
+  });
 }
 
 function openClaudeSession(projectName) { _openAISession(projectName, "claude"); }
@@ -4608,6 +4805,7 @@ let mcpServers = {};
 let mcpStatuses = {};
 let mcpToolsCache = {};
 let mcpStatusCounter = 0;
+let androidStatusCounter = 0;
 
 async function loadMcpPage() {
   try {
@@ -4904,6 +5102,21 @@ function updateMcpIndicators() {
     } else {
       badge.style.display = "none";
     }
+  }
+}
+
+function updateAndroidIndicator(hasDevice) {
+  const badge = document.getElementById("nav-android-badge");
+  if (!badge) return;
+  badge.style.display = "block";
+  if (hasDevice) {
+    badge.style.background = "var(--green)";
+    badge.style.boxShadow = "0 0 8px var(--green)";
+    badge.style.animation = "none";
+  } else {
+    badge.style.background = "var(--red)";
+    badge.style.boxShadow = "0 0 8px var(--red)";
+    badge.style.animation = "pulse 1.5s infinite";
   }
 }
 
@@ -5258,6 +5471,15 @@ async function updateStatusBar() {
           updateMcpIndicators();
         }
       } catch { /* ignore */ }
+    }
+
+    // Android device check (every 4th cycle = ~60s)
+    if (androidStatusCounter++ % 4 === 0) {
+      try {
+        const androidData = await api("/api/android/devices");
+        const connected = androidData.devices && androidData.devices.some(d => d.state === "device");
+        updateAndroidIndicator(connected);
+      } catch { updateAndroidIndicator(false); }
     }
 
     // Network status check (every 2nd cycle = ~30s)
@@ -7038,8 +7260,10 @@ async function scanAndroidDevices() {
     const data = await api("/api/android/devices");
     if (!data.devices || data.devices.length === 0) {
       list.innerHTML = '<div style="color:var(--text-muted);font-size:.9rem;">No devices connected</div>';
+      updateAndroidIndicator(false);
       return;
     }
+    updateAndroidIndicator(data.devices.some(d => d.state === "device"));
     list.innerHTML = data.devices.map(d =>
       '<div class="android-device-card">' +
         '<div class="device-info">' +
@@ -7055,10 +7279,11 @@ async function scanAndroidDevices() {
 }
 
 function showPairDeviceModal() {
+  const lastIp = localStorage.getItem("android-last-ip") || "";
   showGenericModal({
     title: "Pair Android Device",
     fields: [
-      { label: "IP Address", placeholder: "100.x.x.x" },
+      { label: "IP Address", placeholder: "100.x.x.x", value: lastIp },
       { label: "Pairing Port (from phone)", placeholder: "37000" },
       { label: "6-Digit Pairing Code", placeholder: "123456" },
     ],
@@ -7077,14 +7302,35 @@ function showPairDeviceModal() {
 }
 
 function showConnectDeviceModal() {
+  const lastIp = localStorage.getItem("android-last-ip") || "";
+  const lastPort = localStorage.getItem("android-last-port") || "5555";
   showGenericModal({
     title: "Connect Android Device",
     fields: [
-      { label: "IP Address", placeholder: "100.x.x.x or 192.168.x.x" },
-      { label: "Port", placeholder: "5555", value: "5555" },
+      { label: "IP Address", placeholder: "100.x.x.x or 192.168.x.x", value: lastIp },
+      { label: "Port", placeholder: "5555", value: lastPort },
     ],
     confirmText: "Connect",
     onConfirm: (values) => connectAndroidDevice(values[0], values[1]),
+  });
+}
+
+async function quickReconnectDevice() {
+  const lastIp = localStorage.getItem("android-last-ip");
+  if (!lastIp) { showConnectDeviceModal(); return; }
+  const lastPort = localStorage.getItem("android-last-port") || "5555";
+  showGenericModal({
+    title: "Reconnect Device",
+    message: "Reconnecting to <strong>" + escapeHtml(lastIp) + "</strong>. Confirm or change the port:",
+    fields: [
+      { label: "Port", placeholder: "5555", value: lastPort },
+    ],
+    confirmText: "Reconnect",
+    onConfirm: async (values) => {
+      const port = values[0] || "5555";
+      toast("Reconnecting to " + lastIp + ":" + port + "...", "info");
+      await connectAndroidDevice(lastIp, port);
+    },
   });
 }
 
@@ -7093,6 +7339,10 @@ async function connectAndroidDevice(ip, port) {
   port = port || "5555";
   try {
     const data = await api("/api/android/devices/connect", { method: "POST", body: { ip, port } });
+    if (data.ok) {
+      localStorage.setItem("android-last-ip", ip);
+      localStorage.setItem("android-last-port", port);
+    }
     toast(data.ok ? "Connected to " + ip : "Connection failed: " + (data.output || "unknown"), data.ok ? "success" : "error");
     hideModal("generic-modal");
     await scanAndroidDevices();
