@@ -51505,6 +51505,415 @@ ${lines.join("\n")}` }]
   });
 }
 
+// src/brave-client.ts
+var BASE_URL2 = "https://api.search.brave.com/res/v1";
+var API_KEY2 = process.env.BRAVE_API_KEY || "";
+async function braveGet(path, params) {
+  const url = new URL(`${BASE_URL2}${path}`);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== void 0 && value !== null && value !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    }
+  }
+  const res = await fetch(url.toString(), {
+    headers: {
+      "Accept": "application/json",
+      "Accept-Encoding": "gzip",
+      "X-Subscription-Token": API_KEY2
+    }
+  });
+  const data = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, data };
+}
+
+// src/tools/search.ts
+function formatWebResults(data) {
+  if (!data) return "No results found.";
+  const parts = [];
+  if (data.query) {
+    parts.push(`Query: ${data.query.original || ""}`);
+  }
+  if (data.web?.results?.length) {
+    parts.push("\n## Web Results\n");
+    for (const r of data.web.results) {
+      parts.push(`### ${r.title}`);
+      parts.push(`URL: ${r.url}`);
+      if (r.description) parts.push(r.description);
+      if (r.age) parts.push(`Age: ${r.age}`);
+      parts.push("");
+    }
+  }
+  if (data.infobox) {
+    parts.push("\n## Infobox\n");
+    parts.push(`**${data.infobox.title || ""}**`);
+    if (data.infobox.description) parts.push(data.infobox.description);
+    if (data.infobox.long_desc) parts.push(data.infobox.long_desc);
+    parts.push("");
+  }
+  if (data.faq?.results?.length) {
+    parts.push("\n## FAQ\n");
+    for (const faq of data.faq.results) {
+      parts.push(`**Q: ${faq.question}**`);
+      parts.push(`A: ${faq.answer}`);
+      parts.push("");
+    }
+  }
+  if (data.discussions?.results?.length) {
+    parts.push("\n## Discussions\n");
+    for (const d of data.discussions.results) {
+      parts.push(`- [${d.title}](${d.url})`);
+    }
+    parts.push("");
+  }
+  return parts.join("\n") || "No results found.";
+}
+function formatNewsResults(data) {
+  if (!data?.results?.length) return "No news results found.";
+  const parts = ["## News Results\n"];
+  for (const r of data.results) {
+    parts.push(`### ${r.title}`);
+    parts.push(`URL: ${r.url}`);
+    if (r.description) parts.push(r.description);
+    if (r.age) parts.push(`Published: ${r.age}`);
+    if (r.meta_url?.hostname) parts.push(`Source: ${r.meta_url.hostname}`);
+    parts.push("");
+  }
+  return parts.join("\n");
+}
+function formatVideoResults(data) {
+  if (!data?.results?.length) return "No video results found.";
+  const parts = ["## Video Results\n"];
+  for (const r of data.results) {
+    parts.push(`### ${r.title}`);
+    parts.push(`URL: ${r.url}`);
+    if (r.description) parts.push(r.description);
+    if (r.age) parts.push(`Published: ${r.age}`);
+    if (r.meta_url?.hostname) parts.push(`Source: ${r.meta_url.hostname}`);
+    parts.push("");
+  }
+  return parts.join("\n");
+}
+function formatImageResults(data) {
+  if (!data?.results?.length) return "No image results found.";
+  const parts = ["## Image Results\n"];
+  for (const r of data.results) {
+    parts.push(`### ${r.title || "Untitled"}`);
+    parts.push(`URL: ${r.url}`);
+    if (r.source) parts.push(`Source: ${r.source}`);
+    if (r.properties?.width && r.properties?.height) {
+      parts.push(`Size: ${r.properties.width}x${r.properties.height}`);
+    }
+    parts.push("");
+  }
+  return parts.join("\n");
+}
+function registerSearchTools(server) {
+  server.tool(
+    "brave_web_search",
+    "Search the web using Brave Search. Returns web results, knowledge panels, FAQs, and discussions.",
+    {
+      query: external_exports.string().max(400).describe("Search query (max 400 chars, 50 words)"),
+      count: external_exports.number().min(1).max(20).optional().describe("Number of results (default 10, max 20)"),
+      offset: external_exports.number().min(0).max(9).optional().describe("Pagination offset (max 9)"),
+      country: external_exports.string().length(2).optional().describe("Country code (e.g., US, GB, DE)"),
+      search_lang: external_exports.string().optional().describe("Search language (e.g., en, fr, de)"),
+      freshness: external_exports.enum(["pd", "pw", "pm", "py"]).optional().describe("Freshness: pd=past day, pw=past week, pm=past month, py=past year"),
+      safesearch: external_exports.enum(["off", "moderate", "strict"]).optional().describe("Safe search level (default: moderate)"),
+      result_filter: external_exports.string().optional().describe("Comma-separated result types: discussions, faq, infobox, news, query, summarizer, videos, web, locations")
+    },
+    async (params) => {
+      const res = await braveGet("/web/search", {
+        q: params.query,
+        count: params.count,
+        offset: params.offset,
+        country: params.country,
+        search_lang: params.search_lang,
+        freshness: params.freshness,
+        safesearch: params.safesearch,
+        result_filter: params.result_filter
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `Brave API error ${res.status}: ${JSON.stringify(res.data)}` }],
+          isError: true
+        };
+      }
+      return {
+        content: [{ type: "text", text: formatWebResults(res.data) }]
+      };
+    }
+  );
+  server.tool(
+    "brave_local_search",
+    "Search for local businesses, places, and services. Returns names, addresses, phone numbers, ratings, and hours.",
+    {
+      query: external_exports.string().max(400).describe("Local search query (e.g., 'pizza near downtown Austin')"),
+      count: external_exports.number().min(1).max(20).optional().describe("Number of results (default 5)"),
+      country: external_exports.string().length(2).optional().describe("Country code"),
+      search_lang: external_exports.string().optional().describe("Search language")
+    },
+    async (params) => {
+      const res = await braveGet("/web/search", {
+        q: params.query,
+        count: params.count || 5,
+        country: params.country,
+        search_lang: params.search_lang,
+        result_filter: "locations",
+        extra_snippets: true
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `Brave API error ${res.status}: ${JSON.stringify(res.data)}` }],
+          isError: true
+        };
+      }
+      const locations = res.data?.locations?.results || [];
+      if (!locations.length) {
+        return {
+          content: [{ type: "text", text: formatWebResults(res.data) }]
+        };
+      }
+      const parts = ["## Local Results\n"];
+      for (const loc of locations) {
+        parts.push(`### ${loc.title || loc.name || "Unknown"}`);
+        if (loc.address) {
+          const addr = loc.address;
+          const addrParts = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode].filter(Boolean);
+          parts.push(`Address: ${addrParts.join(", ")}`);
+        }
+        if (loc.phone) parts.push(`Phone: ${loc.phone}`);
+        if (loc.rating) parts.push(`Rating: ${loc.rating.ratingValue}/${loc.rating.bestRating} (${loc.rating.ratingCount || "?"} reviews)`);
+        if (loc.openingHours) parts.push(`Hours: ${loc.openingHours}`);
+        if (loc.priceRange) parts.push(`Price: ${loc.priceRange}`);
+        parts.push("");
+      }
+      return {
+        content: [{ type: "text", text: parts.join("\n") }]
+      };
+    }
+  );
+  server.tool(
+    "brave_news_search",
+    "Search for recent news articles. Returns headlines, descriptions, sources, and publication dates.",
+    {
+      query: external_exports.string().max(400).describe("News search query"),
+      count: external_exports.number().min(1).max(50).optional().describe("Number of results (default 10, max 50)"),
+      offset: external_exports.number().min(0).optional().describe("Pagination offset"),
+      freshness: external_exports.enum(["pd", "pw", "pm", "py"]).optional().describe("Freshness filter (default: past 24h for news)"),
+      country: external_exports.string().length(2).optional().describe("Country code"),
+      search_lang: external_exports.string().optional().describe("Search language")
+    },
+    async (params) => {
+      const res = await braveGet("/news/search", {
+        q: params.query,
+        count: params.count || 10,
+        offset: params.offset,
+        freshness: params.freshness || "pd",
+        country: params.country,
+        search_lang: params.search_lang
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `Brave API error ${res.status}: ${JSON.stringify(res.data)}` }],
+          isError: true
+        };
+      }
+      return {
+        content: [{ type: "text", text: formatNewsResults(res.data) }]
+      };
+    }
+  );
+  server.tool(
+    "brave_video_search",
+    "Search for videos. Returns titles, URLs, descriptions, and sources.",
+    {
+      query: external_exports.string().max(400).describe("Video search query"),
+      count: external_exports.number().min(1).max(50).optional().describe("Number of results (default 10, max 50)"),
+      offset: external_exports.number().min(0).optional().describe("Pagination offset"),
+      freshness: external_exports.enum(["pd", "pw", "pm", "py"]).optional().describe("Freshness filter"),
+      country: external_exports.string().length(2).optional().describe("Country code"),
+      search_lang: external_exports.string().optional().describe("Search language")
+    },
+    async (params) => {
+      const res = await braveGet("/videos/search", {
+        q: params.query,
+        count: params.count || 10,
+        offset: params.offset,
+        freshness: params.freshness,
+        country: params.country,
+        search_lang: params.search_lang
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `Brave API error ${res.status}: ${JSON.stringify(res.data)}` }],
+          isError: true
+        };
+      }
+      return {
+        content: [{ type: "text", text: formatVideoResults(res.data) }]
+      };
+    }
+  );
+  server.tool(
+    "brave_image_search",
+    "Search for images. Returns image URLs, titles, sources, and dimensions.",
+    {
+      query: external_exports.string().max(400).describe("Image search query"),
+      count: external_exports.number().min(1).max(200).optional().describe("Number of results (default 10, max 200)"),
+      safesearch: external_exports.enum(["off", "moderate", "strict"]).optional().describe("Safe search (default: strict)"),
+      country: external_exports.string().length(2).optional().describe("Country code"),
+      search_lang: external_exports.string().optional().describe("Search language")
+    },
+    async (params) => {
+      const res = await braveGet("/images/search", {
+        q: params.query,
+        count: params.count || 10,
+        safesearch: params.safesearch || "strict",
+        country: params.country,
+        search_lang: params.search_lang
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `Brave API error ${res.status}: ${JSON.stringify(res.data)}` }],
+          isError: true
+        };
+      }
+      return {
+        content: [{ type: "text", text: formatImageResults(res.data) }]
+      };
+    }
+  );
+  server.tool(
+    "brave_summarizer",
+    "Get an AI-generated summary from a previous web search. First run brave_web_search with result_filter including 'summarizer', then use the summary key from the response.",
+    {
+      key: external_exports.string().describe("Summary key from a previous brave_web_search response (found in data.summarizer.key)"),
+      entity_info: external_exports.boolean().optional().describe("Include entity info in summary")
+    },
+    async (params) => {
+      const res = await braveGet("/summarizer/search", {
+        key: params.key,
+        entity_info: params.entity_info ? 1 : void 0
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `Brave API error ${res.status}: ${JSON.stringify(res.data)}` }],
+          isError: true
+        };
+      }
+      const summary = res.data;
+      const parts = [];
+      if (summary?.title) parts.push(`## ${summary.title}
+`);
+      if (summary?.summary?.length) {
+        for (const s of summary.summary) {
+          parts.push(s.text || s.data || "");
+        }
+      } else if (summary?.message) {
+        parts.push(summary.message);
+      } else {
+        parts.push(JSON.stringify(summary, null, 2));
+      }
+      return {
+        content: [{ type: "text", text: parts.join("\n") || "No summary available." }]
+      };
+    }
+  );
+}
+
+// src/tools/finwiz.ts
+var FINWIZ_URL = process.env.FINWIZ_URL || "http://localhost:5031";
+var FINWIZ_TOKEN = process.env.FINWIZ_TOKEN || "finwiz_secure_token_change_me";
+async function finwizGet(path) {
+  const res = await fetch(`${FINWIZ_URL}${path}`, {
+    headers: { Authorization: `Bearer ${FINWIZ_TOKEN}` },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!res.ok) return { error: `HTTP ${res.status}` };
+  return res.json();
+}
+async function finwizPost(path, body) {
+  const res = await fetch(`${FINWIZ_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${FINWIZ_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: body ? JSON.stringify(body) : void 0,
+    signal: AbortSignal.timeout(3e4)
+  });
+  if (!res.ok) return { error: `HTTP ${res.status}` };
+  return res.json();
+}
+function registerFinwizTools(server) {
+  server.registerTool(
+    "finwiz_portfolio",
+    {
+      description: "Get the user's aggregated portfolio summary from FinWiz \u2014 total value, fiat/crypto split, holdings, risk score (HHI concentration), and 24h change.",
+      inputSchema: {}
+    },
+    async () => {
+      const data = await finwizGet("/api/portfolio");
+      return {
+        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+      };
+    }
+  );
+  server.registerTool(
+    "finwiz_recommendations",
+    {
+      description: "Get active recommendations from FinWiz \u2014 investment opportunities, yield alerts, rebalancing suggestions, money-movement strategies, and risk warnings.",
+      inputSchema: {
+        status: external_exports.string().default("active").describe(
+          "Filter by status: active, dismissed, acted, expired (default: active)"
+        ),
+        category: external_exports.string().optional().describe(
+          "Filter by category: invest, rebalance, hedge, move_money, alert, yield"
+        )
+      }
+    },
+    async ({ status, category }) => {
+      let path = `/api/recommendations?status=${status}`;
+      const data = await finwizGet(path);
+      let recs = Array.isArray(data) ? data : [];
+      if (category) {
+        recs = recs.filter((r) => r.category === category);
+      }
+      return {
+        content: [{ type: "text", text: JSON.stringify(recs, null, 2) }]
+      };
+    }
+  );
+  server.registerTool(
+    "finwiz_analyze",
+    {
+      description: "Trigger an immediate FinWiz analysis cycle \u2014 gathers portfolio state, scans markets (crypto prices, FX rates, Fear & Greed), finds opportunities, checks alerts, and returns findings.",
+      inputSchema: {}
+    },
+    async () => {
+      const result = await finwizPost("/api/analysis/cycle");
+      const market = await finwizGet("/api/market/overview");
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                cycle: result,
+                market
+              },
+              null,
+              2
+            )
+          }
+        ]
+      };
+    }
+  );
+}
+
 // src/index.ts
 init_email_poller();
 init_agentmail_client();
@@ -51524,6 +51933,8 @@ function createServer() {
   registerMemoryTools(server);
   registerActivityTools(server);
   registerAgentmailTools(server);
+  registerSearchTools(server);
+  registerFinwizTools(server);
   return server;
 }
 async function main() {

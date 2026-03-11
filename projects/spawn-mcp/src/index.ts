@@ -9,6 +9,8 @@ import { registerDatabaseTools } from "./tools/database.js";
 import { registerMemoryTools } from "./tools/memory.js";
 import { registerActivityTools } from "./tools/activity.js";
 import { registerAgentmailTools } from "./tools/agentmail.js";
+import { registerSearchTools } from "./tools/search.js";
+import { registerFinwizTools } from "./tools/finwiz.js";
 import { checkNewEmail, startPoller } from "./email-poller.js";
 import { amGet } from "./agentmail-client.js";
 
@@ -30,6 +32,8 @@ function createServer(): McpServer {
   registerMemoryTools(server);
   registerActivityTools(server);
   registerAgentmailTools(server);
+  registerSearchTools(server);
+  registerFinwizTools(server);
 
   return server;
 }
