@@ -1,0 +1,21 @@
+{
+  "name": "hello-spawn",
+  "version": "1.0.0",
+  "description": "Hello World Express API — SPAWN project convention showcase",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsx script/build.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/node": "^20.17.57",
+    "esbuild": "^0.25.4",
+    "tsx": "^4.19.4",
+    "typescript": "^5.6.3"
+  }
+}

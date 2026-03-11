@@ -9,19 +9,22 @@ Local MCP (Model Context Protocol) server for SPAWN. Gives Claude Code native to
 - **Reads**: Direct PostgreSQL queries to `scws_daemon`
 - **Writes/Actions**: Proxied through daemon REST API at `localhost:4000`
 
-## Tools (16)
+## Tools (31)
 - **Projects**: list, get, create, start, stop, build, logs
 - **System**: system status, PM2 list
 - **Database**: list databases, create database
 - **Memory**: remember, recall, forget, list memories
 - **Activity**: get activity log
+- **Email**: send, reply, check new, list inboxes/messages/threads, get message/thread, create inbox
+- **Brave Search**: web search, local search, news search, video search, image search, AI summarizer
 
 ## Key Files
 - `src/index.ts` — Express + MCP server entry point
 - `src/db.ts` — PostgreSQL pool
 - `src/auth.ts` — Bearer token middleware
 - `src/daemon-client.ts` — HTTP client for daemon API
-- `src/tools/` — Tool modules (projects, system, database, memory, activity)
+- `src/brave-client.ts` — Brave Search API HTTP client
+- `src/tools/` — Tool modules (projects, system, database, memory, activity, agentmail, search)
 - `script/build.ts` — esbuild bundler
 
 ## Build & Deploy

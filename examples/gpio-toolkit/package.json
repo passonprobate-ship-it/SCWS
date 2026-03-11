@@ -1,0 +1,17 @@
+{
+  "name": "gpio-toolkit",
+  "version": "1.0.0",
+  "description": "SPAWN GPIO Toolkit — REST API for Raspberry Pi 5 GPIO control",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "onoff": "^6.0.3",
+    "i2c-bus": "^5.2.3",
+    "spi-device": "^3.1.2"
+  }
+}

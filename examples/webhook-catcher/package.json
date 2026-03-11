@@ -1,0 +1,22 @@
+{
+  "name": "webhook-catcher",
+  "version": "1.0.0",
+  "description": "Catches and logs incoming webhooks to PostgreSQL — teaches DB integration",
+  "main": "dist/index.cjs",
+  "scripts": {
+    "build": "npx tsx script/build.ts",
+    "dev": "npx tsx src/index.ts",
+    "start": "node dist/index.cjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "esbuild": "^0.24.0",
+    "@types/express": "^5.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0"
+  }
+}
