@@ -2429,6 +2429,7 @@ function renderProjectList(list) {
         <button class="btn btn-sm" onclick="event.stopPropagation(); quickAction('${p.name}','build')">Build</button>
         <button class="btn btn-sm" onclick="event.stopPropagation(); openProjectInEditor('${p.name}')">Edit</button>
         <button class="btn btn-sm btn-claude" onclick="event.stopPropagation(); openClaudeSession('${p.name}')">Claude</button>
+        ${aiToolsAvail.opencode ? `<button class="btn btn-sm btn-opencode" onclick="event.stopPropagation(); openOpenCodeSession('${p.name}')">OpenCode</button>` : ''}
       </span>
     </div>`;
   }).join("");
