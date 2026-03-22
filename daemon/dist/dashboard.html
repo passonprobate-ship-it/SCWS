@@ -2641,14 +2641,17 @@ document.addEventListener("paste", async (e) => {
 // Per-session clipboard wiring — attaches key handlers and selection-copy to
 // an individual xterm instance but delegates paste to the shared helpers above.
 function setupSessionClipboard(cterm, container, getWs) {
-  // Auto-copy on selection (with fallback)
-  cterm.onSelectionChange(() => {
+  // Auto-copy on mouseup (user gesture required for clipboard API)
+  container.addEventListener("mouseup", () => {
     const sel = cterm.getSelection();
     if (!sel) return;
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(sel).catch(() => _sessionCopyFallback(sel));
+      navigator.clipboard.writeText(sel)
+        .then(() => toast("Copied", "success", 1200))
+        .catch(() => { _sessionCopyFallback(sel); toast("Copied", "success", 1200); });
     } else {
       _sessionCopyFallback(sel);
+      toast("Copied", "success", 1200);
     }
   });
 
@@ -2671,19 +2674,23 @@ function setupSessionClipboard(cterm, container, getWs) {
     if (e.ctrlKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
+        return false;
       } else {
+        // HTTP: must return true so browser fires native paste event;
+        // capture-phase listener reads clipboardData (incl. images)
         _sessionPasteIntercepted = true;
+        return true;
       }
-      return false;
     }
     // Alt+V → paste (Claude CLI image shortcut)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
+        return false;
       } else {
         _sessionPasteIntercepted = true;
+        return true;
       }
-      return false;
     }
     return true;
   });
@@ -3701,14 +3708,17 @@ function initTerminalIfNeeded() {
     }
   });
 
-  // Clipboard: auto-copy on selection
-  term.onSelectionChange(() => {
+  // Clipboard: auto-copy on mouseup (user gesture required for clipboard API)
+  document.getElementById("terminal").addEventListener("mouseup", () => {
     const sel = term.getSelection();
     if (!sel) return;
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(sel).catch(() => termCopyFallback(sel));
+      navigator.clipboard.writeText(sel)
+        .then(() => toast("Copied", "success", 1200))
+        .catch(() => { termCopyFallback(sel); toast("Copied", "success", 1200); });
     } else {
       termCopyFallback(sel);
+      toast("Copied", "success", 1200);
     }
   });
 
@@ -3735,21 +3745,23 @@ function initTerminalIfNeeded() {
     if (e.ctrlKey && (e.code === "KeyV")) {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
+        return false;
       } else {
-        // HTTP: set flag and let native paste event fire — our document-level
-        // capture listener will handle it (including images)
+        // HTTP: must return true so browser fires native paste event;
+        // capture-phase listener reads clipboardData (incl. images)
         termPasteIntercepted = true;
+        return true;
       }
-      return false;
     }
     // Alt+V → paste (Claude CLI image shortcut)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
+        return false;
       } else {
         termPasteIntercepted = true;
+        return true;
       }
-      return false;
     }
     return true;
   });
