@@ -440,7 +440,7 @@
     .net-popover .np-value { color: var(--text); font-weight: 500; }
     .wifi-modal-overlay {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.6);
-      display: flex; align-items: center; justify-content: center; z-index: 100;
+      display: flex; align-items: center; justify-content: center; z-index: 90;
     }
     .wifi-modal {
       background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
@@ -2674,23 +2674,23 @@ function setupSessionClipboard(cterm, container, getWs) {
     if (e.ctrlKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
-        return false;
       } else {
-        // HTTP: must return true so browser fires native paste event;
-        // capture-phase listener reads clipboardData (incl. images)
+        // HTTP: returning false blocks xterm from sending \x16 to the PTY
+        // (which Claude CLI would interpret as paste), but the browser's
+        // native paste event still fires because xterm doesn't preventDefault.
+        // The capture-phase listener picks up clipboardData (incl. images).
         _sessionPasteIntercepted = true;
-        return true;
       }
+      return false;
     }
     // Alt+V → paste (Claude CLI image shortcut)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
-        return false;
       } else {
         _sessionPasteIntercepted = true;
-        return true;
       }
+      return false;
     }
     return true;
   });
@@ -3745,23 +3745,23 @@ function initTerminalIfNeeded() {
     if (e.ctrlKey && (e.code === "KeyV")) {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
-        return false;
       } else {
-        // HTTP: must return true so browser fires native paste event;
-        // capture-phase listener reads clipboardData (incl. images)
+        // HTTP: returning false blocks xterm from sending \x16 to the PTY
+        // (which Claude CLI would interpret as paste), but the browser's
+        // native paste event still fires because xterm doesn't preventDefault.
+        // The capture-phase listener picks up clipboardData (incl. images).
         termPasteIntercepted = true;
-        return true;
       }
+      return false;
     }
     // Alt+V → paste (Claude CLI image shortcut)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
-        return false;
       } else {
         termPasteIntercepted = true;
-        return true;
       }
+      return false;
     }
     return true;
   });
@@ -5184,9 +5184,9 @@ function updateNetworkIndicators() {
   }
 
   setDot("net-eth0-dot", ns.eth0?.up || isVps);
-  setDot("net-wlan0-dot", ns.wlan0?.up && ns.wlan0?.wpa_state === "COMPLETED");
+  setDot("net-wlan0-dot", ns.wlan0?.up && ns.wlan0?.wpa_state === "COMPLETED" && (ns.wlan0?.addresses?.length || 0) > 0);
   setDot("sb-eth0-dot", ns.eth0?.up || isVps);
-  setDot("sb-wlan0-dot", ns.wlan0?.up && ns.wlan0?.wpa_state === "COMPLETED");
+  setDot("sb-wlan0-dot", ns.wlan0?.up && ns.wlan0?.wpa_state === "COMPLETED" && (ns.wlan0?.addresses?.length || 0) > 0);
 
   // Hide wlan indicators on VPS (no WiFi hardware)
   if (isVps) {
@@ -5268,7 +5268,7 @@ function renderNetworkCards() {
       <div class="card" style="cursor:pointer;" onclick="showWifiModal()">
         <div class="flex-between" style="margin-bottom:4px;">
           <span style="font-weight:600;font-size:13px;">WiFi</span>
-          <span class="net-dot ${w.up && w.wpa_state === "COMPLETED" ? "up" : "down"}"></span>
+          <span class="net-dot ${w.up && w.wpa_state === "COMPLETED" && (w.addresses?.length || 0) > 0 ? "up" : "down"}"></span>
         </div>
         <div style="font-size:12px;color:var(--text-muted);">
           ${w.ssid ? escapeHtml(w.ssid) : "Not connected"}
@@ -5339,6 +5339,9 @@ async function showWifiModal() {
   let knownSsids = [];
   try { const kr = await api("/api/network/wifi/known"); knownSsids = kr.known || []; } catch {}
 
+  const wpaState = wlan.wpa_state;
+  const connecting = wpaState && wpaState !== "COMPLETED" && wpaState !== "INACTIVE" && wpaState !== "DISCONNECTED";
+
   overlay.innerHTML = `<div class="wifi-modal">
     <div class="flex-between" style="margin-bottom:16px;">
       <div style="font-weight:700;font-size:16px;">WiFi Management</div>
@@ -5352,8 +5355,21 @@ async function showWifiModal() {
         ${wlan.linkSpeed ? "Link: " + wlan.linkSpeed + " Mbps · " : ""}
         ${wlan.key_mgmt || ""}
       </div>
-    </div>` : `<div class="card" style="margin-bottom:12px;color:var(--text-muted);">Not connected to WiFi</div>`}
-    ${knownSsids.length ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">Known networks: ${knownSsids.map(s => escapeHtml(s)).join(", ")}</div>` : ""}
+    </div>` : `<div class="card" style="margin-bottom:12px;color:var(--text-muted);">Not connected to WiFi${connecting ? ` (state: ${wpaState})` : ""}</div>`}
+    ${knownSsids.length ? `<div style="margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Known networks (click to connect, × to forget):</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${knownSsids.map(s => {
+          const safe = escapeHtml(s);
+          const jsSafe = s.replace(/'/g, "\\'");
+          const isCurrent = s === wlan.ssid;
+          return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 8px;background:var(--bg-surface);border:1px solid ${isCurrent ? "var(--green)" : "var(--border)"};border-radius:12px;font-size:11px;">
+            <span style="cursor:${isCurrent ? "default" : "pointer"};" ${isCurrent ? "" : `onclick="wifiReconnect('${jsSafe}')"`}>${safe}${isCurrent ? " ●" : ""}</span>
+            <button onclick="wifiForget('${jsSafe}')" title="Forget" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">×</button>
+          </span>`;
+        }).join("")}
+      </div>
+    </div>` : ""}
     <div class="flex gap-8" style="margin-bottom:12px;">
       <button class="btn btn-sm btn-primary" onclick="wifiScan()" id="wifi-scan-btn">Scan for Networks</button>
       <button class="btn btn-sm" onclick="loadNetworkStatus().then(()=>showWifiModal())">Refresh Status</button>
@@ -5408,31 +5424,70 @@ function wifiConnect(ssid, security) {
     toast("Open networks not supported (WPA required)", "error");
     return;
   }
+  // Hide the wifi modal so the password prompt isn't stacked underneath it.
+  // Reopened automatically by doWifiConnect after connect attempt completes.
+  const wifiOverlay = document.getElementById("wifi-modal-overlay");
+  if (wifiOverlay) wifiOverlay.remove();
   showGenericModal({
     title: `Connect to "${ssid}"`,
     fields: [{ label: "Password", type: "password", placeholder: "WiFi password (8-63 chars)" }],
     confirmText: "Connect",
     onConfirm: async ([password]) => {
-      if (!password || password.length < 8) { toast("Password must be at least 8 characters", "error"); return; }
-      toast(`Connecting to ${ssid}...`, "info", 8000);
-      try {
-        const r = await api("/api/network/wifi/connect", { method: "POST", body: { ssid, password } });
-        if (r.connected) {
-          toast(`Connected to ${ssid}!`, "success");
-        } else {
-          toast(`Connection initiated to ${ssid} — may take a moment`, "info", 6000);
-        }
-        // Refresh status after a few seconds
-        setTimeout(() => { loadNetworkStatus(); }, 3000);
-        // Close and reopen modal with fresh data
-        const overlay = document.getElementById("wifi-modal-overlay");
-        if (overlay) overlay.remove();
-        setTimeout(() => showWifiModal(), 4000);
-      } catch (e) {
-        toast(`Failed to connect: ${e.message}`, "error", 6000);
+      if (!password || password.length < 8) {
+        toast("Password must be at least 8 characters", "error");
+        showWifiModal();
+        return;
       }
+      await doWifiConnect(ssid, password);
     },
   });
+  // If user clicks Cancel on the password modal, reopen wifi modal so they don't
+  // end up staring at an empty page.
+  const genericOverlay = document.getElementById("generic-modal");
+  const cancelBtn = genericOverlay?.querySelector(".btn:not(#gm-confirm)");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      setTimeout(() => showWifiModal(), 50);
+    }, { once: true });
+  }
+}
+
+async function wifiReconnect(ssid) {
+  await doWifiConnect(ssid, null);
+}
+
+async function doWifiConnect(ssid, password) {
+  toast(`Connecting to ${ssid}…`, "info", 30000);
+  try {
+    const body = password ? { ssid, password } : { ssid };
+    const r = await api("/api/network/wifi/connect", { method: "POST", body });
+    if (r.connected) {
+      const ip = (r.addresses && r.addresses[0]) ? ` (${r.addresses[0]})` : "";
+      toast(`Connected to ${ssid}${ip}`, "success", 5000);
+    } else {
+      toast(`Pending: ${ssid} (state: ${r.wpa_state || "unknown"})`, "info", 6000);
+    }
+    await loadNetworkStatus();
+    const overlay = document.getElementById("wifi-modal-overlay");
+    if (overlay) overlay.remove();
+    setTimeout(() => showWifiModal(), 200);
+  } catch (e) {
+    toast(`Failed to connect: ${e.message}`, "error", 8000);
+  }
+}
+
+async function wifiForget(ssid) {
+  if (!confirm(`Forget WiFi network "${ssid}"?\n\nIf this is the network you're currently connected to and there's no ethernet/Tailscale fallback, you may lose access.`)) return;
+  try {
+    await api(`/api/network/wifi/known/${encodeURIComponent(ssid)}`, { method: "DELETE" });
+    toast(`Forgot ${ssid}`, "success");
+    await loadNetworkStatus();
+    const overlay = document.getElementById("wifi-modal-overlay");
+    if (overlay) overlay.remove();
+    setTimeout(() => showWifiModal(), 200);
+  } catch (e) {
+    toast(`Failed to forget: ${e.message}`, "error", 6000);
+  }
 }
 
 // ── Status Bar ────────────────────────────────────────────────────

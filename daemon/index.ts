@@ -153,15 +153,27 @@ function param(req: Request, key: string): string {
 initTerminalServer(httpServer, (token: string) => safeEqual(token, DASHBOARD_TOKEN));
 
 // ── Dashboard ────────────────────────────────────────────────────
+//
+// dashboard.html is hand-edited (not bundled), so re-read on each request
+// with mtime-based caching. Avoids the trap of editing the file and not
+// seeing changes until the next daemon restart.
 
+const DASHBOARD_PATH = join(_dirname, "dashboard.html");
 let dashboardHtml: string | null = null;
+let dashboardMtimeMs = 0;
 
 function loadDashboard(): void {
   try {
-    dashboardHtml = readFileSync(join(_dirname, "dashboard.html"), "utf-8");
-    log("Dashboard HTML loaded", "startup");
+    const { statSync } = require("fs") as typeof import("fs");
+    const stat = statSync(DASHBOARD_PATH);
+    if (stat.mtimeMs !== dashboardMtimeMs) {
+      dashboardHtml = readFileSync(DASHBOARD_PATH, "utf-8");
+      dashboardMtimeMs = stat.mtimeMs;
+      log("Dashboard HTML loaded (mtime=" + new Date(stat.mtimeMs).toISOString() + ")", "startup");
+    }
   } catch {
     dashboardHtml = null;
+    dashboardMtimeMs = 0;
     log("Dashboard HTML not found", "startup");
   }
 }
@@ -191,6 +203,7 @@ app.get("/api/version", (_req: Request, res: Response) => {
 // ── Dashboard route ──────────────────────────────────────────────
 
 app.get("/", (_req: Request, res: Response) => {
+  loadDashboard();
   if (dashboardHtml) {
     res.type("html").send(dashboardHtml);
   } else {
