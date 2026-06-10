@@ -31,7 +31,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 - **Auto-update**: Hourly cron (`scripts/auto-update.sh`) — git fetch + ff-only pull, per-project restarts, never auto-restarts daemon
 - **Versioning**: `VERSION` file (semver) + `spawn-version.json` (version, gitHash, branch, buildDate) + `.spawn-instance.json` (gitignored, per-machine identity)
 - **Stamp**: `bash scripts/stamp-version.sh` after bumping VERSION, then tag + push
-- **Daemon source**: TypeScript source is built off-instance into `daemon/dist/index.cjs` + `dashboard.html`. Only the built artifacts ship.
+- **Daemon source**: TypeScript lives in this repo (`daemon/*.ts`, `shared/schema.ts`). Build from the repo root: `daemon/node_modules/.bin/tsx script/build.ts` → `daemon/dist/index.cjs`. The dashboard (`daemon/dist/dashboard.html`) is hand-maintained directly in `dist/` and hot-reloaded (no daemon restart needed for dashboard edits).
 
 ## Architecture
 
@@ -49,7 +49,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 └── logs/
 ```
 
-**Daemon source** (built off-instance — only `dist/` ships):
+**Daemon source** (in-repo TypeScript, bundled with esbuild):
 ```
 SPAWN/
 ├── shared/schema.ts     ← Drizzle ORM schema (8 tables)
@@ -113,6 +113,16 @@ The `spawn-mcp` MCP server provides persistent key-value memory via the `spawn_m
 | `spawn_list_memories` | List all stored keys and tags (values omitted for brevity) |
 
 **When to use**: Save task plans (`active-task-{project}`), architecture decisions, deployment notes, or any state that should survive session disconnects. Always check existing memories before starting work on a project.
+
+## Boot Philosophy — SPAWN Core Only (IMPORTANT)
+
+SPAWN is a working server and dev tool. **On boot, only the SPAWN core comes alive — no project auto-starts. The user decides what projects get spooled up, and when.**
+
+- **SPAWN core** (online at boot): `scws-daemon`, `spawn-mcp`, `pm2-logrotate`. Nothing else.
+- **Projects** start on demand — via the dashboard, the daemon API, or the user asking you. The daemon's `startProject` rebuilds the full PM2 process from the registry (entry file, port, env, heap caps), so a project doesn't need to be in the PM2 dump at all.
+- **The PM2 dump (`pm2 save`) is the boot baseline.** Only run `pm2 save` when the process list reflects the boot state: core online, projects stopped. Never `pm2 save` while projects you spooled up for a session are still running — that would resurrect them on the next reboot.
+- **Never mass-start projects** ("start everything back up") unless the user explicitly asks. The idle watchdog auto-stops idle projects by design; that is normal operation, not a fault.
+- If the user wants a specific project to survive reboots, they will say so — only then add it to the baseline (`pm2 save` with that project online).
 
 ## Port Allocation
 
@@ -184,7 +194,7 @@ Every new project must complete ALL of these steps:
 5. Register in daemon: `POST /api/projects` with `{ name, port, framework, description }`
 6. PATCH project: set `status=running`, `gitRepo`, `gitBranch`, `deployTargets`
 7. Write a `projects/<name>/CLAUDE.md` so future sessions know what's there
-8. `pm2 save` — persist across reboots
+8. Do **NOT** `pm2 save` with the project running — the PM2 dump is the core-only boot baseline (see Boot Philosophy). The daemon can always restart the project from its registry entry.
 9. Git commit + push to monorepo
 
 ## VPS Deployment Patterns
@@ -247,7 +257,7 @@ The `/remote-control` feature is particularly useful — the user often controls
 2. **Be thorough.** After making changes, verify they work. Check logs. Curl endpoints. Run builds.
 3. **Be safe.** Use `execFile` not `exec`. Validate inputs. Don't expose secrets in logs or responses.
 4. **Be efficient.** Resources vary by instance (Pi 8GB, VPS 2GB, etc.). Don't install unnecessary packages. Keep builds lean.
-5. **Leave things running.** After you build something, make sure PM2 is managing it and `pm2 save` persists it across reboots.
+5. **Leave the session's work running, but keep the boot baseline core-only.** After you build something, make sure PM2 is managing it and verify it responds. Do not add it to the boot baseline (`pm2 save`) — on reboot only SPAWN core comes alive; the user decides what gets spooled up (see Boot Philosophy).
 6. **Document your work.** Update the project's CLAUDE.md so your future self (or another Claude session) knows what's there.
 7. **Don't restart the daemon.** Project work never requires a daemon restart. Never run `pm2 restart all` — always restart individual projects by name. See "Daemon Restart Rules" above.
 8. **Save your plan before work.** Before non-trivial tasks, save the plan to spawn-mcp (`spawn_remember` key `active-task-{project}`) with steps and status. Update after milestones. Mark complete or paused when done. This ensures session disconnects don't lose progress.

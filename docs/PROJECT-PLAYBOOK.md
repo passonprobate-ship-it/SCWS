@@ -138,9 +138,9 @@ pm2 start /var/www/scws/projects/my-app/dist/index.js \
   --cwd /var/www/scws/projects/my-app \
   --node-args="--env-file=.env --max-old-space-size=128" \
   --max-memory-restart 150M
-
-pm2 save
 ```
+
+**Do NOT run `pm2 save` here.** The PM2 dump is the boot baseline — SPAWN core only (`scws-daemon`, `spawn-mcp`, `pm2-logrotate`). Projects start on demand; on boot only SPAWN comes alive, and the user decides what to spool up. The daemon can always recreate the process from its registry entry (see CLAUDE.md "Boot Philosophy").
 
 **Heap cap guidelines:**
 | Project Size | Heap Cap | PM2 Restart |
@@ -654,8 +654,9 @@ pm2 start dist/index.js --name my-app \
   --node-args="--env-file=.env --max-old-space-size=128" \
   --max-memory-restart 150M
 
-# Always save after changes
-pm2 save
+# pm2 save ONLY when the list is at the boot baseline (SPAWN core online,
+# projects stopped) or after deleting a process. The dump decides what
+# resurrects on reboot — and on boot, only SPAWN core comes alive.
 
 # View logs
 pm2 logs my-app --lines 30

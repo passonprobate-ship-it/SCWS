@@ -7,7 +7,7 @@ node_modules/
 !.env.example
 
 # === Build artifacts ===
-# Ignore all dist/ except daemon/dist/ (daemon source not on Pi)
+# Ignore all dist/ except daemon/dist/ (built daemon bundle ships in the repo)
 dist/
 !daemon/dist/
 

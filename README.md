@@ -125,6 +125,8 @@ You open the dashboard, type a prompt like "build me a URL shortener with analyt
 
 If something breaks, it reads the logs, diagnoses the issue, fixes it, and redeploys.
 
+**Projects run on demand, not at boot.** When the machine starts, only the SPAWN core comes alive (daemon, MCP server, log rotation). You decide which projects to spool up and when — from the dashboard, the API, or by asking the AI. An idle watchdog spools projects back down when they're not being used. SPAWN is a working server and dev tool, not a rack of always-on apps.
+
 ## Architecture
 
 ```
