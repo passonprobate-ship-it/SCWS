@@ -110,17 +110,35 @@ if [[ ! -d .git ]]; then
   exit 1
 fi
 
+# A skipped update is invisible in the log file — surface it in the dashboard
+# activity log, at most once per day, so a permanently-skipping instance gets noticed.
+SKIP_MARKER="$SCWS_ROOT/logs/.auto-update-skip-notified"
+notify_skip_daily() {
+  local reason="$1"
+  local today
+  today=$(date '+%Y-%m-%d')
+  if [[ "$(cat "$SKIP_MARKER" 2>/dev/null)" != "$today" ]]; then
+    printf '%s' "$today" > "$SKIP_MARKER"
+    notify_daemon "Auto-update is NOT running: $reason"
+  fi
+}
+
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [[ "$CURRENT_BRANCH" != "master" ]]; then
   warn "Not on master branch (on '$CURRENT_BRANCH'), skipping"
+  notify_skip_daily "repo is on branch '$CURRENT_BRANCH' (auto-update only runs on master)"
   exit 0
 fi
 
 # Check for dirty working tree
 if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
   warn "Dirty working tree, skipping auto-update"
+  notify_skip_daily "working tree is dirty (uncommitted changes block ff-only pull)"
   exit 0
 fi
+
+# Healthy run — clear the skip marker so a future skip notifies again
+rm -f "$SKIP_MARKER"
 
 # ── Fetch ────────────────────────────────────────────────────────────────────
 
@@ -362,9 +380,10 @@ if $VERSION_CHANGED || [[ "$OLD_HEAD" != "$NEW_HEAD" ]]; then
   bash "$SCWS_ROOT/scripts/stamp-version.sh" --deploy-method=auto-update 2>/dev/null || warn "Version stamp failed"
 fi
 
-# ── PM2 save ─────────────────────────────────────────────────────────────────
-
-pm2 save --force >/dev/null 2>&1 || true
+# NOTE: deliberately NO `pm2 save` here. The PM2 dump is the boot baseline
+# (SPAWN core only — daemon, spawn-mcp, logrotate). Saving mid-update would
+# capture whatever projects happen to be spooled up and auto-start them on the
+# next reboot, which violates the on-demand boot philosophy (see CLAUDE.md).
 
 # ── Notifications ────────────────────────────────────────────────────────────
 
