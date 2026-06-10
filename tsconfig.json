@@ -12,7 +12,15 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "typeRoots": ["daemon/node_modules/@types"]
+    "typeRoots": ["daemon/node_modules/@types"],
+    "baseUrl": ".",
+    "paths": {
+      "drizzle-orm": ["daemon/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["daemon/node_modules/drizzle-orm/*"],
+      "drizzle-zod": ["daemon/node_modules/drizzle-zod"],
+      "zod": ["daemon/node_modules/zod"],
+      "esbuild": ["daemon/node_modules/esbuild"]
+    }
   },
   "include": ["daemon/**/*.ts", "shared/**/*.ts", "script/**/*.ts"]
 }

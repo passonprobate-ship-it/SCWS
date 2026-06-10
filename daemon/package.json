@@ -23,6 +23,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@types/busboy": "^1.5.4",
     "@types/express": "^5.0.0",
     "@types/node": "^20.19.0",
     "@types/pg": "^8.16.0",

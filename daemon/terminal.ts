@@ -515,8 +515,8 @@ export function getClaudeSessionsList(): Array<{
   return result;
 }
 
-export function getTerminalSessionsList(): Array<{ id: string; createdAt: number; attached: boolean }> {
-  return Array.from(sessions.values()).map(s => ({ id: s.id, createdAt: s.createdAt, attached: s.ws?.readyState === WebSocket.OPEN }));
+export function getTerminalSessionsList(): Array<{ id: string; createdAt: number; attached: boolean; pid: number | null }> {
+  return Array.from(sessions.values()).map(s => ({ id: s.id, createdAt: s.createdAt, attached: s.ws?.readyState === WebSocket.OPEN, pid: s.pty?.pid ?? null }));
 }
 
 export function getCapabilities(): { opencode: boolean } {

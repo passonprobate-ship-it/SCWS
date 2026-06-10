@@ -212,7 +212,7 @@ export function registerAndroidRoutes(app: Application): void {
 
   // GET /api/android/builds — recent android builds from activity_log
   app.get("/api/android/builds", asyncHandler("Android builds", async (_req, res) => {
-    const activities = await storage.getActivities(50);
+    const activities = await storage.getActivity(50);
     const builds = activities.filter(a => a.action === "android_build");
     res.json({ builds });
   }));
@@ -224,7 +224,7 @@ export function registerAndroidRoutes(app: Application): void {
     const type = buildType === "release" ? "Release" : "Debug";
 
     // Validate project name
-    if (!/^[a-zA-Z0-9_-]+$/.test(name)) { res.status(400).json({ error: "invalid project name" }); return; }
+    if (typeof name !== "string" || !/^[a-zA-Z0-9_-]+$/.test(name)) { res.status(400).json({ error: "invalid project name" }); return; }
 
     const projectDir = path.join(PROJECTS_DIR, name);
     if (!dirExists(projectDir)) { res.status(404).json({ error: `project ${name} not found` }); return; }
@@ -296,7 +296,7 @@ export function registerAndroidRoutes(app: Application): void {
 
     if (!serial || typeof serial !== "string") { res.status(400).json({ error: "serial required" }); return; }
     if (!/^[\d.:a-zA-Z_-]+$/.test(serial)) { res.status(400).json({ error: "invalid serial format" }); return; }
-    if (!/^[a-zA-Z0-9_-]+$/.test(name)) { res.status(400).json({ error: "invalid project name" }); return; }
+    if (typeof name !== "string" || !/^[a-zA-Z0-9_-]+$/.test(name)) { res.status(400).json({ error: "invalid project name" }); return; }
 
     const projectDir = path.join(PROJECTS_DIR, name);
     if (!dirExists(projectDir)) { res.status(404).json({ error: `project ${name} not found` }); return; }
