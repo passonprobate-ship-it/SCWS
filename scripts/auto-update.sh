@@ -418,12 +418,6 @@ if $DAEMON_RESTART; then
       -H "Content-Type: application/json" \
       -d '{"action":"daemon_restart_pending","details":"Auto-update pulled daemon changes. Restart required to apply. Run: pm2 restart scws-daemon"}' \
       >/dev/null 2>&1 || true
-    # Set a daemon config flag the dashboard can check
-    curl -sf -X POST "http://localhost:4000/api/config" \
-      -H "Authorization: Bearer $DASHBOARD_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d '{"key":"daemon_restart_pending","value":"true"}' \
-      >/dev/null 2>&1 || true
   fi
   notify_cortex "SPAWN auto-update: daemon restart required. Approve in dashboard or run: pm2 restart scws-daemon"
   log "Dashboard notified — user must restart manually"
