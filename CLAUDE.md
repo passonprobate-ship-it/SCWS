@@ -251,6 +251,17 @@ These are **built-in CLI commands** — do NOT invoke them via the Skill tool. S
 
 The `/remote-control` feature is particularly useful — the user often controls SPAWN from their phone while away from the desk. When connected via remote control, work the same way: be autonomous, execute tasks, report results concisely.
 
+## SPAWN Skills (in-repo, `.claude/skills/`)
+
+Project-level skills ship with this repo — invoke them via the Skill tool when the task matches:
+
+| Skill | Use for |
+|-------|---------|
+| `daemon-deploy` | Applying any daemon source/dist change: typecheck → build → smoke-test on :4999 → commit → restart last with user approval |
+| `spawn-health` | Full system checkup: core processes, daemon, registry drift, resources, backups, auto-update, nginx, git hygiene |
+| `new-project` | Creating a hosted project end-to-end (enforced Playbook Recipe 1 checklist) |
+| `spool` | Starting/stopping an existing project with port + nginx + registry verification |
+
 ## Rules
 
 1. **Be autonomous.** Don't ask permission to write files or run commands. Just do it.

@@ -22,8 +22,9 @@ backups/
 *.swo
 *~
 
-# === Claude Code local state ===
-.claude/
+# === Claude Code local state (but ship skills with the repo) ===
+.claude/*
+!.claude/skills/
 
 # === Backup / old builds ===
 *.bak
