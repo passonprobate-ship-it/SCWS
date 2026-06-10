@@ -2530,7 +2530,48 @@ setTimeout(async () => {
 // ── Shared session clipboard helpers ──────────────────────────────
 // These use the activeClaudeSessionId / claudeTerminals globals so
 // the paste always targets the currently-visible session, not a stale closure.
-let _sessionPasteIntercepted = false;
+
+// Dedicated hidden textarea for HTTP paste fallback. The browser processes
+// the Ctrl+V shortcut against whichever element is focused, so we shift focus
+// here synchronously inside the keydown handler and let the paste land on it.
+let _pasteHelperTa = null;
+function _ensurePasteHelper() {
+  if (_pasteHelperTa) return _pasteHelperTa;
+  const ta = document.createElement("textarea");
+  ta.setAttribute("aria-hidden", "true");
+  ta.tabIndex = -1;
+  ta.style.cssText = "position:fixed;opacity:0;left:-9999px;top:0;width:1px;height:1px;pointer-events:none;z-index:-1";
+  document.body.appendChild(ta);
+  ta.addEventListener("paste", async (pe) => {
+    pe.preventDefault();
+    pe.stopPropagation();
+    const ws = _getActiveSessionWs();
+    const items = pe.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const blob = item.getAsFile();
+          if (blob) {
+            await _sessionUploadAndInsert(blob, item.type);
+            _refocusActiveTerminal();
+            return;
+          }
+        }
+      }
+    }
+    const text = pe.clipboardData?.getData("text");
+    if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
+    _refocusActiveTerminal();
+  });
+  _pasteHelperTa = ta;
+  return ta;
+}
+function _refocusActiveTerminal() {
+  setTimeout(() => {
+    const entry = claudeTerminals[activeClaudeSessionId];
+    if (entry && entry.term) entry.term.focus();
+  }, 30);
+}
 
 function _getActiveSessionWs() {
   if (!activeClaudeSessionId) return null;
@@ -2544,8 +2585,9 @@ function _sessionCopyFallback(text) {
   ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
   document.body.appendChild(ta);
   ta.select();
-  document.execCommand("copy");
+  const ok = document.execCommand("copy");
   document.body.removeChild(ta);
+  return ok;
 }
 
 async function _sessionUploadAndInsert(blob, mime) {
@@ -2616,28 +2658,6 @@ async function _sessionPasteFromClipboard() {
   }
 }
 
-// Single document-level paste listener for ALL session terminals (capture phase).
-// On HTTP, Ctrl+V sets _sessionPasteIntercepted=true so this listener can grab
-// image data from clipboardData before xterm.js consumes the event.
-document.addEventListener("paste", async (e) => {
-  if (!_sessionPasteIntercepted) return;
-  _sessionPasteIntercepted = false;
-  e.preventDefault();
-  e.stopPropagation();
-  const ws = _getActiveSessionWs();
-  const items = e.clipboardData?.items;
-  if (items) {
-    for (const item of items) {
-      if (item.type.startsWith("image/")) {
-        const blob = item.getAsFile();
-        if (blob) { await _sessionUploadAndInsert(blob, item.type); return; }
-      }
-    }
-  }
-  const text = (e.clipboardData || window.clipboardData)?.getData("text");
-  if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
-}, true);
-
 // Per-session clipboard wiring — attaches key handlers and selection-copy to
 // an individual xterm instance but delegates paste to the shared helpers above.
 function setupSessionClipboard(cterm, container, getWs) {
@@ -2648,10 +2668,9 @@ function setupSessionClipboard(cterm, container, getWs) {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(sel)
         .then(() => toast("Copied", "success", 1200))
-        .catch(() => { _sessionCopyFallback(sel); toast("Copied", "success", 1200); });
+        .catch(() => { if (_sessionCopyFallback(sel)) toast("Copied", "success", 1200); });
     } else {
-      _sessionCopyFallback(sel);
-      toast("Copied", "success", 1200);
+      if (_sessionCopyFallback(sel)) toast("Copied", "success", 1200);
     }
   });
 
@@ -2675,20 +2694,24 @@ function setupSessionClipboard(cterm, container, getWs) {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
       } else {
-        // HTTP: returning false blocks xterm from sending \x16 to the PTY
-        // (which Claude CLI would interpret as paste), but the browser's
-        // native paste event still fires because xterm doesn't preventDefault.
-        // The capture-phase listener picks up clipboardData (incl. images).
-        _sessionPasteIntercepted = true;
+        // HTTP fallback: synchronously shift focus to a dedicated hidden
+        // textarea so the browser's Ctrl+V shortcut lands its paste event
+        // there instead of xterm's hidden input. The textarea's own paste
+        // listener handles text + images and forwards to the PTY.
+        const ta = _ensurePasteHelper();
+        ta.value = "";
+        ta.focus();
       }
       return false;
     }
-    // Alt+V → paste (Claude CLI image shortcut)
+    // Alt+V → paste (Claude CLI image shortcut on Mac)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
       } else {
-        _sessionPasteIntercepted = true;
+        const ta = _ensurePasteHelper();
+        ta.value = "";
+        ta.focus();
       }
       return false;
     }
@@ -2698,7 +2721,13 @@ function setupSessionClipboard(cterm, container, getWs) {
   // Right-click paste
   container.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    _sessionPasteFromClipboard();
+    if (navigator.clipboard && window.isSecureContext) {
+      _sessionPasteFromClipboard();
+    } else {
+      const ta = _ensurePasteHelper();
+      ta.value = "";
+      ta.focus();
+    }
   });
 
   // Drag-and-drop image support
@@ -3715,16 +3744,48 @@ function initTerminalIfNeeded() {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(sel)
         .then(() => toast("Copied", "success", 1200))
-        .catch(() => { termCopyFallback(sel); toast("Copied", "success", 1200); });
+        .catch(() => { if (termCopyFallback(sel)) toast("Copied", "success", 1200); });
     } else {
-      termCopyFallback(sel);
-      toast("Copied", "success", 1200);
+      if (termCopyFallback(sel)) toast("Copied", "success", 1200);
     }
   });
 
-  // Flag: when true, the next paste event should be handled by our
-  // document-level capture listener (for HTTP image paste support)
-  let termPasteIntercepted = false;
+  // Dedicated hidden textarea for HTTP paste fallback. Browser processes
+  // Ctrl+V against the focused element, so we synchronously shift focus here
+  // inside the keydown handler and let the paste land directly on it.
+  let _termPasteTa = null;
+  function _ensureTermPasteHelper() {
+    if (_termPasteTa) return _termPasteTa;
+    const ta = document.createElement("textarea");
+    ta.setAttribute("aria-hidden", "true");
+    ta.tabIndex = -1;
+    ta.style.cssText = "position:fixed;opacity:0;left:-9999px;top:0;width:1px;height:1px;pointer-events:none;z-index:-1";
+    document.body.appendChild(ta);
+    ta.addEventListener("paste", async (pe) => {
+      pe.preventDefault();
+      pe.stopPropagation();
+      const items = pe.clipboardData?.items;
+      if (items) {
+        for (const item of items) {
+          if (item.type.startsWith("image/")) {
+            const blob = item.getAsFile();
+            if (blob) {
+              await uploadAndInsertImage(blob, item.type);
+              setTimeout(() => term && term.focus(), 30);
+              return;
+            }
+          }
+        }
+      }
+      const text = pe.clipboardData?.getData("text");
+      if (text && termWs && termWs.readyState === WebSocket.OPEN) {
+        termWs.send(JSON.stringify({ type: "input", data: text }));
+      }
+      setTimeout(() => term && term.focus(), 30);
+    });
+    _termPasteTa = ta;
+    return ta;
+  }
 
   // Clipboard: Ctrl+Shift+V paste, Ctrl+V paste, right-click paste
   term.attachCustomKeyEventHandler((e) => {
@@ -3746,20 +3807,20 @@ function initTerminalIfNeeded() {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
       } else {
-        // HTTP: returning false blocks xterm from sending \x16 to the PTY
-        // (which Claude CLI would interpret as paste), but the browser's
-        // native paste event still fires because xterm doesn't preventDefault.
-        // The capture-phase listener picks up clipboardData (incl. images).
-        termPasteIntercepted = true;
+        const ta = _ensureTermPasteHelper();
+        ta.value = "";
+        ta.focus();
       }
       return false;
     }
-    // Alt+V → paste (Claude CLI image shortcut)
+    // Alt+V → paste (Claude CLI image shortcut on Mac)
     if (e.altKey && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
       } else {
-        termPasteIntercepted = true;
+        const ta = _ensureTermPasteHelper();
+        ta.value = "";
+        ta.focus();
       }
       return false;
     }
@@ -3769,34 +3830,14 @@ function initTerminalIfNeeded() {
   // Right-click paste on terminal
   container.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    termPasteFromClipboard();
+    if (navigator.clipboard && window.isSecureContext) {
+      termPasteFromClipboard();
+    } else {
+      const ta = _ensureTermPasteHelper();
+      ta.value = "";
+      ta.focus();
+    }
   });
-
-  // Document-level paste listener (capture phase) — catches paste events
-  // regardless of which element the browser targets. On HTTP, clipboardData
-  // provides image blobs even without a secure context.
-  document.addEventListener("paste", async (e) => {
-    // Only intercept when terminal is active and we flagged a paste
-    if (!termPasteIntercepted) return;
-    termPasteIntercepted = false;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const items = e.clipboardData?.items;
-    if (items) {
-      for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const blob = item.getAsFile();
-          if (blob) { await uploadAndInsertImage(blob, item.type); return; }
-        }
-      }
-    }
-    // No image — handle as text
-    const text = (e.clipboardData || window.clipboardData)?.getData("text");
-    if (text && termWs && termWs.readyState === WebSocket.OPEN) {
-      termWs.send(JSON.stringify({ type: "input", data: text }));
-    }
-  }, true); // ← capture phase: fires before any other paste handler
 
   // Auto-resize on container size change
   termResizeObserver = new ResizeObserver(() => {
@@ -3949,8 +3990,9 @@ function termCopyFallback(text) {
   ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
   document.body.appendChild(ta);
   ta.select();
-  document.execCommand("copy");
+  const ok = document.execCommand("copy");
   document.body.removeChild(ta);
+  return ok;
 }
 
 async function uploadAndInsertImage(blob, mime) {
