@@ -57,6 +57,12 @@ location ~ ^/${name}(/.*)?$ {
 }
 
 export async function addProjectNginx(name: string, port: number, framework?: string, isPublic = true): Promise<void> {
+  // Android projects have no HTTP server — a proxy config would only produce 502s
+  if (framework === "android") {
+    log(`Skipped nginx config for "${name}" (android framework, no HTTP server)`, "nginx");
+    return;
+  }
+
   const configPath = `${NGINX_PROJECTS_DIR}/${name}.conf`;
   const config = framework === "next"
     ? generateNextConfig(name, port, isPublic)

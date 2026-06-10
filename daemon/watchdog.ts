@@ -162,7 +162,34 @@ async function watchdogPoll(): Promise<void> {
       pm2Map.set(p.name.startsWith("scws-") ? p.name.replace(/^scws-/, "") : p.name, p);
     }
 
-    const running = (await storage.getProjects()).filter(p => p.status === "running");
+    // Reconcile registry status with PM2 reality. Manual pm2 start/stop outside
+    // the daemon otherwise leaves the DB status stale forever.
+    const allProjects = await storage.getProjects();
+    for (const p of allProjects) {
+      const proc = pm2Map.get(p.name);
+      const pmStatus = proc?.pm2_env?.status;
+      if (pmStatus === "online" && p.status !== "running" && p.status !== "building") {
+        await storage.updateProject(p.name, { status: "running" });
+        await storage.logActivity({
+          projectId: p.id,
+          action: "status_reconciled",
+          details: `Watchdog: "${p.name}" is online in PM2 — registry status corrected to running (was ${p.status})`,
+        });
+        p.status = "running";
+      } else if (p.status === "running" && proc && pmStatus === "stopped" && (proc.pm2_env?.exit_code ?? 0) === 0) {
+        // Clean manual stop (exit 0). Crashes (non-zero exit, errored, vanished)
+        // are left for checkProjectHealth so crash notifications still fire.
+        await storage.updateProject(p.name, { status: "stopped" });
+        await storage.logActivity({
+          projectId: p.id,
+          action: "status_reconciled",
+          details: `Watchdog: "${p.name}" stopped in PM2 — registry status corrected to stopped`,
+        });
+        p.status = "stopped";
+      }
+    }
+
+    const running = allProjects.filter(p => p.status === "running");
 
     for (const p of running) {
       const proc = pm2Map.get(p.name);
@@ -233,7 +260,8 @@ function checkIdleProject(
 ): void {
   if (!proc || proc.pm2_env?.status !== "online") return;
 
-  const _noAutoStop = ["spawn-cortex"];
+  // SPAWN core services — never auto-stop (spawn-mcp serves Claude's memory tools)
+  const _noAutoStop = ["spawn-cortex", "spawn-mcp"];
   if (_noAutoStop.includes(name)) {
     lastActivityMap.set(name, Date.now());
     return;
