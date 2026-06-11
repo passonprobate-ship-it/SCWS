@@ -261,6 +261,9 @@ Project-level skills ship with this repo — invoke them via the Skill tool when
 | `spawn-health` | Full system checkup: core processes, daemon, registry drift, resources, backups, auto-update, nginx, git hygiene |
 | `new-project` | Creating a hosted project end-to-end (enforced Playbook Recipe 1 checklist) |
 | `spool` | Starting/stopping an existing project with port + nginx + registry verification |
+| `release` | Cutting a release: preflight → VERSION bump → stamp → tag → push (ships to all instances via auto-update) |
+| `android-ship` | Building an Android APK and installing it on a device over wireless ADB |
+| `resume-work` | Recovering in-flight tasks from spawn-mcp `active-task-*` keys after a disconnect/restart |
 
 ## Rules
 
