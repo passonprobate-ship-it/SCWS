@@ -567,6 +567,8 @@ function resetIdleTimer(session: TerminalSession, map: Map<string, TerminalSessi
         type: "output",
         data: "\r\n\x1b[33m[Session timed out after 30 minutes of inactivity]\x1b[0m\r\n",
       }));
+      // Signal a deliberate termination so the client doesn't auto-reconnect into a fresh shell
+      session.ws.send(JSON.stringify({ type: "timeout" }));
       session.ws.close();
     }
     cleanupSession(session.id, map);

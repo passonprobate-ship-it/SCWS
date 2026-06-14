@@ -1227,6 +1227,104 @@ app.post("/api/tailscale/funnel/disable", asyncHandler("Disable Tailscale Funnel
   res.json({ ok: true });
 }));
 
+// ── Tailscale connection control + status ────────────────────────
+// Powers the Tailscale panel on the Connections page: verify status,
+// inspect tailnet peers, and connect/disconnect the node.
+
+const tsName = (dns: string | undefined, host: string | undefined): string => {
+  const base = (dns || host || "").replace(/\.$/, "").split(".")[0];
+  return base || host || "unknown";
+};
+
+app.get("/api/tailscale/status", asyncHandler("Tailscale status", async (_req, res) => {
+  // Is the tailscaled service alive + set to start on boot?
+  let serviceActive = false;
+  let serviceEnabled = false;
+  try {
+    const { stdout } = await execFileAsync("systemctl", ["is-active", "tailscaled"], { timeout: 5_000 });
+    serviceActive = stdout.trim() === "active";
+  } catch (e: any) { serviceActive = String(e?.stdout || "").trim() === "active"; }
+  try {
+    const { stdout } = await execFileAsync("systemctl", ["is-enabled", "tailscaled"], { timeout: 5_000 });
+    serviceEnabled = stdout.trim() === "enabled";
+  } catch (e: any) { serviceEnabled = String(e?.stdout || "").trim() === "enabled"; }
+
+  let data: any = null;
+  try {
+    const { stdout } = await execFileAsync("tailscale", ["status", "--json"], { timeout: 8_000 });
+    data = JSON.parse(stdout);
+  } catch { data = null; }
+
+  if (!data) {
+    res.json({ installed: serviceActive, serviceActive, serviceEnabled, up: false, backendState: "Stopped", self: null, peers: [], user: null, tailnet: null, magicDNSSuffix: null, exitNode: null });
+    return;
+  }
+
+  const self = data.Self || {};
+  const peerVals: any[] = Object.values(data.Peer || {});
+  const peers = peerVals
+    .map((p: any) => ({
+      name: tsName(p.DNSName, p.HostName),
+      dnsName: (p.DNSName || "").replace(/\.$/, ""),
+      ip: (p.TailscaleIPs || [])[0] || null,
+      os: p.OS || null,
+      online: !!p.Online,
+      lastSeen: p.LastSeen || null,
+      rx: p.RxBytes || 0,
+      tx: p.TxBytes || 0,
+      exitNode: !!p.ExitNode,
+      exitNodeOption: !!p.ExitNodeOption,
+      active: !!p.Active,
+    }))
+    .sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0) || a.name.localeCompare(b.name));
+
+  const activeExit = peerVals.find((p: any) => p.ExitNode);
+
+  res.json({
+    installed: true,
+    serviceActive,
+    serviceEnabled,
+    up: data.BackendState === "Running",
+    backendState: data.BackendState || null,
+    version: data.Version || null,
+    tailnet: data.CurrentTailnet?.Name || null,
+    magicDNSSuffix: data.MagicDNSSuffix || null,
+    user: (self.UserID && data.User?.[String(self.UserID)]?.LoginName) || null,
+    self: {
+      name: tsName(self.DNSName, self.HostName),
+      dnsName: (self.DNSName || "").replace(/\.$/, ""),
+      ip: (self.TailscaleIPs || [])[0] || null,
+      ip6: (self.TailscaleIPs || [])[1] || null,
+      os: self.OS || null,
+      online: !!self.Online,
+      exitNode: !!self.ExitNode,
+    },
+    exitNode: activeExit ? { name: tsName(activeExit.DNSName, activeExit.HostName), ip: (activeExit.TailscaleIPs || [])[0] || null } : null,
+    peers,
+  });
+}));
+
+app.post("/api/tailscale/up", asyncHandler("Tailscale up", async (_req, res) => {
+  try {
+    // --reset defaults false, so existing prefs (exit node, routes) are preserved.
+    await execFileAsync("sudo", ["-n", "tailscale", "up", "--timeout=20s"], { timeout: 25_000 });
+    await storage.logActivity({ action: "tailscale_up", details: "Tailscale connected" });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.stderr || e?.message || "tailscale up failed").trim() });
+  }
+}));
+
+app.post("/api/tailscale/down", asyncHandler("Tailscale down", async (_req, res) => {
+  try {
+    await execFileAsync("sudo", ["-n", "tailscale", "down"], { timeout: 15_000 });
+    await storage.logActivity({ action: "tailscale_down", details: "Tailscale disconnected" });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.stderr || e?.message || "tailscale down failed").trim() });
+  }
+}));
+
 // ── System Quick Actions ─────────────────────────────────────────
 
 app.post("/api/system/quick-action", asyncHandler("System quick action", async (req, res) => {

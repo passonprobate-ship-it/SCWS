@@ -146,7 +146,7 @@
 
     /* ── Project Grid ──────────────────────────── */
     .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
-    .project-card { cursor: pointer; position: relative; padding: 20px 20px 52px; }
+    .project-card { cursor: pointer; position: relative; padding: 20px; display: flex; flex-direction: column; }
     .project-card .name { font-size: 17px; font-weight: 600; }
     .project-card .meta { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.6; }
     .project-card .stats-row { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
@@ -156,8 +156,8 @@
     .project-card .git-link:hover { text-decoration: underline; }
     .project-card .dir-path { font-size: 10px; color: var(--text-dim); margin-top: 6px; }
     .project-card .quick-actions {
-      display: flex; position: absolute; bottom: 12px; right: 12px;
-      gap: 4px; align-items: center;
+      display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+      margin-top: auto; padding-top: 16px;
     }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
     .status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
@@ -690,6 +690,44 @@
     .conn-tag { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border); }
     .conn-card-actions { display: flex; gap: 6px; }
     .conn-card-actions .btn { padding: 4px 10px; font-size: 10px; }
+
+    /* ── Tailscale Panel (Connections) ─────────── */
+    .ts-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; margin-bottom: 16px; }
+    .ts-panel-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .ts-logo { width: 34px; height: 34px; border-radius: var(--radius); background: var(--bg-surface); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ts-logo svg { display: block; }
+    .ts-title { font-size: 14px; font-weight: 600; }
+    .ts-sub { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+    .ts-state { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+    .ts-state.on  { background: rgba(34,197,94,.12); color: var(--green); }
+    .ts-state.off { background: rgba(239,68,68,.12); color: var(--red, #ef4444); }
+    .ts-state.unknown { background: var(--bg-surface); color: var(--text-muted); }
+    .ts-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .ts-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .ts-dot.off { background: var(--red, #ef4444); }
+    .ts-dot.unknown { background: var(--text-muted); }
+    .ts-dot.idle { background: var(--amber); }
+    .ts-actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+    .ts-actions .btn { padding: 5px 12px; font-size: 11px; }
+    .ts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 18px; margin-top: 14px; }
+    .ts-field .k { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+    .ts-field .v { font-size: 12px; color: var(--text); margin-top: 2px; font-family: var(--font-mono); word-break: break-all; }
+    .ts-field .v.copyable { cursor: pointer; }
+    .ts-field .v.copyable:hover { color: var(--accent); }
+    .ts-peers { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .ts-peers-title { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin-bottom: 8px; }
+    .ts-peer-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .ts-peer-table th { text-align: left; font-weight: 500; color: var(--text-dim); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .ts-peer-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+    .ts-peer-table tr:last-child td { border-bottom: none; }
+    .ts-peer-name { color: var(--text); font-weight: 500; }
+    .ts-peer-ip { font-family: var(--font-mono); color: var(--text-muted); cursor: pointer; }
+    .ts-peer-ip:hover { color: var(--accent); }
+    .ts-peer-self { background: rgba(34,197,94,.06); }
+    .ts-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: rgba(245,158,11,.15); color: var(--amber); margin-left: 4px; }
+    .ts-badge.self { background: rgba(34,197,94,.15); color: var(--green); }
+    .ts-os { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--bg-surface); color: var(--text-dim); border: 1px solid var(--border); text-transform: capitalize; }
+    .ts-state-row { display: inline-flex; align-items: center; gap: 5px; }
 
     /* ── VPS Page ──────────────────────────────── */
     .vps-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
@@ -1592,6 +1630,32 @@
         <button class="btn btn-primary" onclick="showAddConnectionModal()">+ Add Connection</button>
       </div>
       <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Connection profiles for SSH, databases, APIs, and more</div>
+
+      <!-- Tailscale mesh VPN status + control -->
+      <div class="ts-panel mt-12" id="ts-panel">
+        <div class="ts-panel-head">
+          <div class="ts-logo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="color:var(--text-muted)">
+              <circle cx="4.5" cy="4.5" r="2"/><circle cx="12" cy="4.5" r="2"/><circle cx="19.5" cy="4.5" r="2" opacity=".4"/>
+              <circle cx="4.5" cy="12" r="2" opacity=".4"/><circle cx="12" cy="12" r="2"/><circle cx="19.5" cy="12" r="2" opacity=".4"/>
+              <circle cx="4.5" cy="19.5" r="2" opacity=".4"/><circle cx="12" cy="19.5" r="2" opacity=".4"/><circle cx="19.5" cy="19.5" r="2" opacity=".4"/>
+            </svg>
+          </div>
+          <div>
+            <div class="ts-title">Tailscale</div>
+            <div class="ts-sub">Mesh VPN — verify status &amp; control this node</div>
+          </div>
+          <span class="ts-state unknown" id="ts-state"><span class="ts-dot unknown"></span> <span id="ts-state-label">Loading…</span></span>
+          <div class="ts-actions">
+            <button class="btn btn-sm" id="ts-refresh-btn" onclick="loadTailscale()">Refresh</button>
+            <button class="btn btn-sm" id="ts-connect-btn" onclick="tailscaleUp()" style="display:none;">Connect</button>
+            <button class="btn btn-sm" id="ts-disconnect-btn" onclick="tailscaleDown()" style="display:none; color:var(--red);">Disconnect</button>
+            <a class="btn btn-sm" href="https://login.tailscale.com/admin/machines" target="_blank" rel="noopener">Admin Console &#8599;</a>
+          </div>
+        </div>
+        <div id="ts-body"></div>
+      </div>
+
       <div class="conn-filter-bar mt-12">
         <input class="input" id="conn-search" placeholder="Search connections..." oninput="filterConnections()">
         <select id="conn-type-filter" onchange="filterConnections()">
@@ -2531,46 +2595,68 @@ setTimeout(async () => {
 // These use the activeClaudeSessionId / claudeTerminals globals so
 // the paste always targets the currently-visible session, not a stale closure.
 
-// Dedicated hidden textarea for HTTP paste fallback. The browser processes
-// the Ctrl+V shortcut against whichever element is focused, so we shift focus
-// here synchronously inside the keydown handler and let the paste land on it.
-let _pasteHelperTa = null;
-function _ensurePasteHelper() {
-  if (_pasteHelperTa) return _pasteHelperTa;
-  const ta = document.createElement("textarea");
-  ta.setAttribute("aria-hidden", "true");
-  ta.tabIndex = -1;
-  ta.style.cssText = "position:fixed;opacity:0;left:-9999px;top:0;width:1px;height:1px;pointer-events:none;z-index:-1";
-  document.body.appendChild(ta);
-  ta.addEventListener("paste", async (pe) => {
-    pe.preventDefault();
-    pe.stopPropagation();
-    const ws = _getActiveSessionWs();
-    const items = pe.clipboardData?.items;
-    if (items) {
-      for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const blob = item.getAsFile();
-          if (blob) {
-            await _sessionUploadAndInsert(blob, item.type);
-            _refocusActiveTerminal();
-            return;
-          }
-        }
-      }
-    }
-    const text = pe.clipboardData?.getData("text");
-    if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
-    _refocusActiveTerminal();
-  });
-  _pasteHelperTa = ta;
-  return ta;
-}
 function _refocusActiveTerminal() {
   setTimeout(() => {
     const entry = claudeTerminals[activeClaudeSessionId];
     if (entry && entry.term) entry.term.focus();
   }, 30);
+}
+
+// ── Global paste handler (single source of truth for ALL terminal paste) ──
+// The native `paste` event's clipboardData works in BOTH secure (HTTPS) and
+// insecure (HTTP) contexts — unlike navigator.clipboard, which HTTP blocks.
+// Catching it here in the CAPTURE phase lets us handle Ctrl+V uniformly and
+// stopPropagation so xterm's own textarea paste handler never double-processes.
+// This replaces the old racy "focus a hidden textarea on keydown" HTTP fallback.
+let _globalPasteInstalled = false;
+function _installGlobalPasteHandler() {
+  if (_globalPasteInstalled) return;
+  _globalPasteInstalled = true;
+  document.addEventListener("paste", (e) => {
+    // Resolve the terminal from the paste target OR the focused element.
+    const t = (e.target && e.target.closest) ? e.target : document.activeElement;
+    if (!t || !t.closest) return;
+    const inClaude = t.closest(".claude-term-wrapper");
+    const inMain = t.closest("#terminal-container");
+    if (!inClaude && !inMain) return; // not a terminal — let normal inputs paste
+
+    // Always shield the terminal: stop xterm AND the CLI from seeing a raw paste
+    // keystroke (the CLI would otherwise try to read a local clipboard image it
+    // can't reach and report "image data not found").
+    e.preventDefault();
+    e.stopPropagation();
+
+    // On a secure context the keydown/right-click handlers already read the
+    // clipboard via navigator.clipboard — don't double-process here.
+    if (window.isSecureContext && navigator.clipboard) return;
+
+    // HTTP (insecure context) fallback: extract straight from the native event.
+    const cd = e.clipboardData;
+    if (!cd) return;
+
+    let ws, insertImage;
+    if (inClaude) {
+      ws = _getActiveSessionWs();
+      insertImage = (blob, mime) => _sessionUploadAndInsert(blob, mime);
+    } else {
+      ws = (typeof termWs !== "undefined" && termWs && termWs.readyState === WebSocket.OPEN) ? termWs : null;
+      insertImage = (blob, mime) => uploadAndInsertImage(blob, mime);
+    }
+
+    // Image takes priority over text
+    const items = cd.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type && item.type.startsWith("image/")) {
+          const blob = item.getAsFile();
+          if (blob) { insertImage(blob, item.type); return; }
+        }
+      }
+    }
+    // Text
+    const text = cd.getData("text");
+    if (text && ws) ws.send(JSON.stringify({ type: "input", data: text }));
+  }, true); // capture phase
 }
 
 function _getActiveSessionWs() {
@@ -2661,6 +2747,7 @@ async function _sessionPasteFromClipboard() {
 // Per-session clipboard wiring — attaches key handlers and selection-copy to
 // an individual xterm instance but delegates paste to the shared helpers above.
 function setupSessionClipboard(cterm, container, getWs) {
+  _installGlobalPasteHandler();
   // Auto-copy on mouseup (user gesture required for clipboard API)
   container.addEventListener("mouseup", () => {
     const sel = cterm.getSelection();
@@ -2689,44 +2776,28 @@ function setupSessionClipboard(cterm, container, getWs) {
       }
       return false;
     }
-    // Ctrl+V or Ctrl+Shift+V → paste
-    if (e.ctrlKey && e.code === "KeyV") {
+    // Ctrl+V / Ctrl+Shift+V / Alt+V → paste. Always return false so xterm never
+    // emits a ^V control char to the CLI. In a secure context (HTTPS or
+    // localhost) read the clipboard programmatically — same proven path as
+    // right-click, handles text + images. On insecure HTTP the global
+    // capture-phase paste handler picks up the native paste event instead.
+    if ((e.ctrlKey || e.altKey) && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         _sessionPasteFromClipboard();
-      } else {
-        // HTTP fallback: synchronously shift focus to a dedicated hidden
-        // textarea so the browser's Ctrl+V shortcut lands its paste event
-        // there instead of xterm's hidden input. The textarea's own paste
-        // listener handles text + images and forwards to the PTY.
-        const ta = _ensurePasteHelper();
-        ta.value = "";
-        ta.focus();
-      }
-      return false;
-    }
-    // Alt+V → paste (Claude CLI image shortcut on Mac)
-    if (e.altKey && e.code === "KeyV") {
-      if (navigator.clipboard && window.isSecureContext) {
-        _sessionPasteFromClipboard();
-      } else {
-        const ta = _ensurePasteHelper();
-        ta.value = "";
-        ta.focus();
       }
       return false;
     }
     return true;
   });
 
-  // Right-click paste
+  // Right-click paste. Secure context → read clipboard programmatically;
+  // insecure HTTP can't (browser blocks it), so point the user at Ctrl+V.
   container.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (navigator.clipboard && window.isSecureContext) {
       _sessionPasteFromClipboard();
     } else {
-      const ta = _ensurePasteHelper();
-      ta.value = "";
-      ta.focus();
+      toast("Press Ctrl+V to paste", "info", 1500);
     }
   });
 
@@ -3676,6 +3747,7 @@ let termResizeObserver = null;
 let termManualDisconnect = false;  // true when user clicks Disconnect
 let termReconnectTimer = null;
 let currentSessionId = null;       // server-assigned session ID for reconnection
+let termReattachTarget = null;     // session ID we asked to reattach to (detect idle-killed sessions)
 
 function initTerminalIfNeeded() {
   if (term) {
@@ -3729,6 +3801,7 @@ function initTerminalIfNeeded() {
 
   term.open(container);
   termFitAddon.fit();
+  _installGlobalPasteHandler();
 
   // Send keystrokes to server
   term.onData((data) => {
@@ -3750,43 +3823,6 @@ function initTerminalIfNeeded() {
     }
   });
 
-  // Dedicated hidden textarea for HTTP paste fallback. Browser processes
-  // Ctrl+V against the focused element, so we synchronously shift focus here
-  // inside the keydown handler and let the paste land directly on it.
-  let _termPasteTa = null;
-  function _ensureTermPasteHelper() {
-    if (_termPasteTa) return _termPasteTa;
-    const ta = document.createElement("textarea");
-    ta.setAttribute("aria-hidden", "true");
-    ta.tabIndex = -1;
-    ta.style.cssText = "position:fixed;opacity:0;left:-9999px;top:0;width:1px;height:1px;pointer-events:none;z-index:-1";
-    document.body.appendChild(ta);
-    ta.addEventListener("paste", async (pe) => {
-      pe.preventDefault();
-      pe.stopPropagation();
-      const items = pe.clipboardData?.items;
-      if (items) {
-        for (const item of items) {
-          if (item.type.startsWith("image/")) {
-            const blob = item.getAsFile();
-            if (blob) {
-              await uploadAndInsertImage(blob, item.type);
-              setTimeout(() => term && term.focus(), 30);
-              return;
-            }
-          }
-        }
-      }
-      const text = pe.clipboardData?.getData("text");
-      if (text && termWs && termWs.readyState === WebSocket.OPEN) {
-        termWs.send(JSON.stringify({ type: "input", data: text }));
-      }
-      setTimeout(() => term && term.focus(), 30);
-    });
-    _termPasteTa = ta;
-    return ta;
-  }
-
   // Clipboard: Ctrl+Shift+V paste, Ctrl+V paste, right-click paste
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
@@ -3802,40 +3838,28 @@ function initTerminalIfNeeded() {
       }
       return false;
     }
-    // Ctrl+V or Ctrl+Shift+V → paste from clipboard
-    if (e.ctrlKey && (e.code === "KeyV")) {
+    // Ctrl+V / Ctrl+Shift+V / Alt+V → paste. Always return false so xterm never
+    // emits a ^V control char to the CLI. In a secure context (HTTPS or
+    // localhost) read the clipboard programmatically — same proven path as
+    // right-click, handles text + images. On insecure HTTP the global
+    // capture-phase paste handler picks up the native paste event instead.
+    if ((e.ctrlKey || e.altKey) && e.code === "KeyV") {
       if (navigator.clipboard && window.isSecureContext) {
         termPasteFromClipboard();
-      } else {
-        const ta = _ensureTermPasteHelper();
-        ta.value = "";
-        ta.focus();
-      }
-      return false;
-    }
-    // Alt+V → paste (Claude CLI image shortcut on Mac)
-    if (e.altKey && e.code === "KeyV") {
-      if (navigator.clipboard && window.isSecureContext) {
-        termPasteFromClipboard();
-      } else {
-        const ta = _ensureTermPasteHelper();
-        ta.value = "";
-        ta.focus();
       }
       return false;
     }
     return true;
   });
 
-  // Right-click paste on terminal
+  // Right-click paste on terminal. Secure context → read clipboard
+  // programmatically; insecure HTTP can't, so point the user at Ctrl+V.
   container.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (navigator.clipboard && window.isSecureContext) {
       termPasteFromClipboard();
     } else {
-      const ta = _ensureTermPasteHelper();
-      ta.value = "";
-      ta.focus();
+      toast("Press Ctrl+V to paste", "info", 1500);
     }
   });
 
@@ -3863,10 +3887,12 @@ async function connectTerminal() {
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   let sessionParam = "";
+  termReattachTarget = null;
 
   // If we have a known session ID, try to reconnect to it
   if (currentSessionId) {
     sessionParam = `&session=${encodeURIComponent(currentSessionId)}`;
+    termReattachTarget = currentSessionId;
   } else {
     // Check for detached sessions on the server
     try {
@@ -3879,11 +3905,13 @@ async function connectTerminal() {
         if (detached.length === 1) {
           // Auto-attach to the only detached session
           sessionParam = `&session=${encodeURIComponent(detached[0].id)}`;
+          termReattachTarget = detached[0].id;
           if (term) term.writeln(`\x1b[36m[Reattaching to ${detached[0].id}...]\x1b[0m`);
         } else if (detached.length > 1) {
           // Multiple detached — pick most recent
           detached.sort((a, b) => b.detachedAt - a.detachedAt);
           sessionParam = `&session=${encodeURIComponent(detached[0].id)}`;
+          termReattachTarget = detached[0].id;
           if (term) term.writeln(`\x1b[36m[Reattaching to ${detached[0].id} (${detached.length} sessions available)...]\x1b[0m`);
         }
       }
@@ -3915,9 +3943,33 @@ async function connectTerminal() {
         term.clear();
         term.write(msg.data);
       } else if (msg.type === "session") {
+        // If we asked to reattach to a specific session but the server handed us a
+        // *different* (brand-new) one, the original was already gone — e.g. idle-killed.
+        // Don't silently keep a fresh shell that will idle-timeout and loop forever.
+        if (termReattachTarget && msg.id !== termReattachTarget) {
+          termReattachTarget = null;
+          termManualDisconnect = true; // stop the auto-reconnect loop
+          currentSessionId = null;     // old session no longer exists
+          term.writeln("\r\n\x1b[33m[Session expired — press Reconnect to start a new one]\x1b[0m");
+          updateTermStatus("disconnected");
+          updateTermBtn("Reconnect");
+          document.getElementById("nav-claude-badge").style.display = "none";
+          if (termReconnectTimer) { clearTimeout(termReconnectTimer); termReconnectTimer = null; }
+          try { termWs.close(); } catch { /* ignore */ }
+          return;
+        }
         // Server assigned/confirmed session ID
+        termReattachTarget = null;
         currentSessionId = msg.id;
         updateTermStatus(`${msg.id}`);
+      } else if (msg.type === "timeout") {
+        // Server idle-killed this session deliberately — treat like exit, do NOT auto-reconnect
+        termManualDisconnect = true;
+        currentSessionId = null;
+        termReattachTarget = null;
+        updateTermStatus("disconnected");
+        updateTermBtn("Reconnect");
+        document.getElementById("nav-claude-badge").style.display = "none";
       } else if (msg.type === "exit") {
         termManualDisconnect = true; // don't auto-reconnect after process exit
         currentSessionId = null;     // session is dead
@@ -6205,12 +6257,173 @@ async function handleServerUpload(event) {
 let connectionsList = [];
 
 async function loadConnections() {
+  loadTailscale();
   try {
     connectionsList = await api("/api/connections");
     filterConnections();
   } catch (err) {
     toast("Failed to load connections: " + err.message, "error");
   }
+}
+
+// ── Tailscale panel ─────────────────────────────────────────────
+let _tsBusy = false;
+
+function tsRelTime(iso) {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 0) return "just now";
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.floor(h / 24);
+  return d + "d ago";
+}
+
+function tsFmtBytes(n) {
+  if (!n) return "0";
+  const u = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n < 10 && i > 0 ? 1 : 0) + u[i];
+}
+
+async function loadTailscale() {
+  const stateEl = document.getElementById("ts-state");
+  const labelEl = document.getElementById("ts-state-label");
+  const body = document.getElementById("ts-body");
+  if (!stateEl || !body) return;
+  try {
+    const ts = await api("/api/tailscale/status");
+    renderTailscale(ts);
+  } catch (err) {
+    stateEl.className = "ts-state unknown";
+    if (labelEl) labelEl.textContent = "Unavailable";
+    body.innerHTML = `<div style="font-size:11px; color:var(--text-muted); margin-top:12px;">Could not read Tailscale status: ${escapeHtml(err.message || String(err))}</div>`;
+  }
+}
+
+function renderTailscale(ts) {
+  const stateEl = document.getElementById("ts-state");
+  const labelEl = document.getElementById("ts-state-label");
+  const dot = stateEl?.querySelector(".ts-dot");
+  const body = document.getElementById("ts-body");
+  const connectBtn = document.getElementById("ts-connect-btn");
+  const disconnectBtn = document.getElementById("ts-disconnect-btn");
+
+  // Header state pill
+  const up = ts.up;
+  const installed = ts.installed;
+  stateEl.className = "ts-state " + (up ? "on" : (installed ? "off" : "unknown"));
+  if (dot) dot.className = "ts-dot " + (up ? "on" : (installed ? "off" : "unknown"));
+  labelEl.textContent = !installed ? "Not running" : (up ? "Connected" : (ts.backendState === "NeedsLogin" ? "Needs login" : "Disconnected"));
+
+  // Buttons
+  connectBtn.style.display = up ? "none" : "inline-block";
+  disconnectBtn.style.display = up ? "inline-block" : "none";
+
+  if (!installed) {
+    body.innerHTML = `<div style="font-size:11px; color:var(--text-muted); margin-top:12px;">tailscaled service is not active on this machine. Install/start Tailscale to manage it here.</div>`;
+    return;
+  }
+
+  const self = ts.self || {};
+  const fields = [
+    ["Tailscale IP", self.ip, true],
+    ["MagicDNS name", self.dnsName, true],
+    ["Hostname", self.name, false],
+    ["Account", ts.user, false],
+    ["Tailnet", ts.tailnet, false],
+    ["Version", ts.version ? ts.version.split("-")[0] : null, false],
+    ["Boot start", ts.serviceEnabled ? "enabled" : "disabled", false],
+    ["Exit node", ts.exitNode ? `${ts.exitNode.name} (${ts.exitNode.ip})` : (self.exitNode ? "this node" : "none"), false],
+  ];
+  const fieldsHtml = fields.map(([k, v, copy]) => `
+    <div class="ts-field">
+      <div class="k">${k}</div>
+      <div class="v ${copy && v ? "copyable" : ""}" ${copy && v ? `onclick="tsCopy(this, '${escapeHtml(v)}')" title="Copy"` : ""}>${v ? escapeHtml(String(v)) : "—"}</div>
+    </div>`).join("");
+
+  const peers = ts.peers || [];
+  // Build a combined list with self first
+  const selfRow = self.ip ? `
+    <tr class="ts-peer-self">
+      <td><span class="ts-state-row"><span class="ts-dot ${self.online ? "on" : "off"}"></span><span class="ts-peer-name">${escapeHtml(self.name)}</span><span class="ts-badge self">this device</span></span></td>
+      <td class="ts-peer-ip" onclick="tsCopy(this, '${escapeHtml(self.ip)}')">${escapeHtml(self.ip)}</td>
+      <td><span class="ts-os">${escapeHtml(self.os || "—")}</span></td>
+      <td>${self.online ? "online" : "offline"}</td>
+      <td>—</td>
+    </tr>` : "";
+  const peerRows = peers.map(p => {
+    const dotClass = p.online ? "on" : "off";
+    const stateTxt = p.online ? (p.active ? "active" : "online") : "offline";
+    return `
+    <tr>
+      <td><span class="ts-state-row"><span class="ts-dot ${dotClass}"></span><span class="ts-peer-name">${escapeHtml(p.name)}</span>${p.exitNode ? '<span class="ts-badge">exit</span>' : ""}</span></td>
+      <td class="ts-peer-ip" ${p.ip ? `onclick="tsCopy(this, '${escapeHtml(p.ip)}')"` : ""}>${escapeHtml(p.ip || "—")}</td>
+      <td><span class="ts-os">${escapeHtml(p.os || "—")}</span></td>
+      <td>${stateTxt}</td>
+      <td title="↓ ${tsFmtBytes(p.rx)} / ↑ ${tsFmtBytes(p.tx)}">${p.online ? "now" : tsRelTime(p.lastSeen)}</td>
+    </tr>`;
+  }).join("");
+
+  body.innerHTML = `
+    <div class="ts-grid">${fieldsHtml}</div>
+    <div class="ts-peers">
+      <div class="ts-peers-title">Tailnet devices (${peers.length + (self.ip ? 1 : 0)})</div>
+      <table class="ts-peer-table">
+        <thead><tr><th>Device</th><th>IP</th><th>OS</th><th>State</th><th>Last seen</th></tr></thead>
+        <tbody>${selfRow}${peerRows || (selfRow ? "" : '<tr><td colspan="5" style="color:var(--text-dim);">No peers</td></tr>')}</tbody>
+      </table>
+    </div>`;
+}
+
+function tsCopy(el, text) {
+  copyToClipboard(text, el);
+  toast("Copied " + text, "success");
+}
+
+async function tailscaleUp() {
+  if (_tsBusy) return;
+  _tsBusy = true;
+  const btn = document.getElementById("ts-connect-btn");
+  const old = btn.textContent;
+  btn.textContent = "Connecting…";
+  btn.disabled = true;
+  try {
+    await api("/api/tailscale/up", { method: "POST" });
+    toast("Tailscale connected", "success");
+    await loadTailscale();
+  } catch (err) {
+    toast("Connect failed: " + (err.message || err), "error");
+  }
+  btn.textContent = old;
+  btn.disabled = false;
+  _tsBusy = false;
+}
+
+async function tailscaleDown() {
+  if (_tsBusy) return;
+  if (!confirm("Disconnect this device from Tailscale?\n\nRemote access over the tailnet (including this dashboard if you reached it via Tailscale) will drop until you reconnect.")) return;
+  _tsBusy = true;
+  const btn = document.getElementById("ts-disconnect-btn");
+  const old = btn.textContent;
+  btn.textContent = "Disconnecting…";
+  btn.disabled = true;
+  try {
+    await api("/api/tailscale/down", { method: "POST" });
+    toast("Tailscale disconnected", "success");
+    await loadTailscale();
+  } catch (err) {
+    toast("Disconnect failed: " + (err.message || err), "error");
+  }
+  btn.textContent = old;
+  btn.disabled = false;
+  _tsBusy = false;
 }
 
 function filterConnections() {
