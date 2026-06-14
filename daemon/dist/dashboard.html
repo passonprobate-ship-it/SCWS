@@ -1981,9 +1981,10 @@ function toast(msg, type = "info", duration = 4000) {
 function showModal(id) { document.getElementById(id).classList.add("active"); }
 function hideModal(id) { document.getElementById(id).classList.remove("active"); }
 
-function showGenericModal({ title, fields, confirmText, onConfirm }) {
+function showGenericModal({ title, message, fields, confirmText, onConfirm }) {
   const el = document.getElementById("generic-modal-content");
   let html = `<div class="modal-title">${escapeHtml(title)}</div>`;
+  if (message) html += `<p style="font-size:13px; color:var(--text-muted); line-height:1.5; margin-bottom:16px;">${message}</p>`;
   fields.forEach((f, i) => {
     html += `<div class="form-group">
       <label class="form-label">${escapeHtml(f.label)}</label>
@@ -7601,10 +7602,13 @@ async function scanAndroidDevices() {
   }
 }
 
-function showPairDeviceModal() {
-  const lastIp = localStorage.getItem("android-last-ip") || "";
+function showPairDeviceModal(opts) {
+  opts = opts || {};
+  const lastIp = opts.ip || localStorage.getItem("android-last-ip") || "";
+  const defaultMsg = "Android 11+ requires <strong>pairing</strong> before connecting. On the phone: Settings → Developer options → <strong>Wireless debugging</strong> → ON → tap <strong>&ldquo;Pair device with pairing code&rdquo;</strong>, then enter the pairing port + 6-digit code shown there.<br><br>Note: the pairing port differs from the connect port, and both change whenever you toggle Wireless debugging or reboot. Use the <strong>Tailscale IP</strong>, not the phone's Wi-Fi IP.";
   showGenericModal({
     title: "Pair Android Device",
+    message: opts.message || defaultMsg,
     fields: [
       { label: "IP Address", placeholder: "100.x.x.x", value: lastIp },
       { label: "Pairing Port (from phone)", placeholder: "37000" },
@@ -7616,7 +7620,13 @@ function showPairDeviceModal() {
       if (!ip || !port || !code) { toast("All fields required", "error"); return; }
       try {
         const data = await api("/api/android/devices/pair", { method: "POST", body: { ip, port, code } });
-        toast(data.ok ? "Paired successfully! Now click Connect." : "Pairing failed: " + (data.output || "unknown"), data.ok ? "success" : "error");
+        if (data.ok) {
+          localStorage.setItem("android-last-ip", ip);
+          toast("Paired successfully! Now enter the connect port (not the pairing port).", "success");
+          setTimeout(() => showConnectDeviceModal({ ip }), 300);
+        } else {
+          toast("Pairing failed: " + (data.output || "unknown"), "error");
+        }
       } catch (e) {
         toast("Pair failed: " + e.message, "error");
       }
@@ -7624,11 +7634,13 @@ function showPairDeviceModal() {
   });
 }
 
-function showConnectDeviceModal() {
-  const lastIp = localStorage.getItem("android-last-ip") || "";
+function showConnectDeviceModal(opts) {
+  opts = opts || {};
+  const lastIp = opts.ip || localStorage.getItem("android-last-ip") || "";
   const lastPort = localStorage.getItem("android-last-port") || "5555";
   showGenericModal({
     title: "Connect Android Device",
+    message: "Enter the <strong>connect port</strong> shown on the phone's Wireless debugging screen (Android 11+). It is usually <strong>not</strong> 5555. If connecting fails as &ldquo;refused&rdquo;, pair the device first.",
     fields: [
       { label: "IP Address", placeholder: "100.x.x.x or 192.168.x.x", value: lastIp },
       { label: "Port", placeholder: "5555", value: lastPort },
@@ -7662,12 +7674,28 @@ async function connectAndroidDevice(ip, port) {
   port = port || "5555";
   try {
     const data = await api("/api/android/devices/connect", { method: "POST", body: { ip, port } });
+    hideModal("generic-modal");
     if (data.ok) {
       localStorage.setItem("android-last-ip", ip);
       localStorage.setItem("android-last-port", port);
+      toast("Connected to " + ip, "success");
+      await scanAndroidDevices();
+      return;
     }
-    toast(data.ok ? "Connected to " + ip : "Connection failed: " + (data.output || "unknown"), data.ok ? "success" : "error");
-    hideModal("generic-modal");
+    // Connection failed — detect the "device not listening / needs pairing" signature
+    const out = (data.output || "").toLowerCase();
+    const needsPairing = out.includes("refused") || out.includes("failed to connect")
+      || out.includes("cannot connect") || out.includes("timed out") || out.includes("timeout")
+      || out.includes("no route") || out.includes("unable to connect");
+    if (needsPairing) {
+      toast("Nothing is listening on " + ip + ":" + port + " — the phone needs pairing first. Opening the pairing dialog…", "error");
+      setTimeout(() => showPairDeviceModal({
+        ip,
+        message: "Connecting to <strong>" + escapeHtml(ip) + ":" + escapeHtml(String(port)) + "</strong> was refused — nothing is listening on that ADB port. On Android 11+ you must <strong>pair first</strong>.<br><br>On the phone: Settings → Developer options → <strong>Wireless debugging</strong> → ON → tap <strong>&ldquo;Pair device with pairing code&rdquo;</strong>. Enter the pairing port + 6-digit code below. (The connect port is shown separately on the Wireless debugging screen and is <strong>not</strong> 5555.)",
+      }), 300);
+    } else {
+      toast("Connection failed: " + (data.output || "unknown"), "error");
+    }
     await scanAndroidDevices();
   } catch (e) {
     toast("Connect failed: " + e.message, "error");
