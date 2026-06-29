@@ -2061,14 +2061,9 @@ if (token) {
 // ── Global helpers for Setup page (must be global for inline onclick) ────
 function copyToClipboard(text, btn) {
   function onSuccess() { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
+  function onFail() { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
   function fallback() {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); onSuccess(); } catch(e) { btn.textContent = 'Failed'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1500); }
-    document.body.removeChild(ta);
+    if (_execCommandCopy(text)) onSuccess(); else onFail();
   }
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
@@ -2627,11 +2622,13 @@ function _installGlobalPasteHandler() {
     e.preventDefault();
     e.stopPropagation();
 
-    // On a secure context the keydown/right-click handlers already read the
-    // clipboard via navigator.clipboard — don't double-process here.
-    if (window.isSecureContext && navigator.clipboard) return;
-
-    // HTTP (insecure context) fallback: extract straight from the native event.
+    // Single source of truth for Ctrl+V paste in BOTH secure (HTTPS) and
+    // insecure (HTTP) contexts: extract straight from the native event's
+    // clipboardData. This needs NO clipboard permission (unlike
+    // navigator.clipboard.read(), which Chrome can silently block forever once
+    // denied — the long-standing cause of "paste does nothing"). Right-click
+    // paste still uses navigator.clipboard in the contextmenu handler because a
+    // context-menu Paste does not fire a native paste event on the xterm canvas.
     const cd = e.clipboardData;
     if (!cd) return;
 
@@ -2667,14 +2664,47 @@ function _getActiveSessionWs() {
 }
 
 function _sessionCopyFallback(text) {
+  return _execCommandCopy(text);
+}
+
+// Bulletproof HTTP-context copy. xterm renders to a canvas, so the highlighted
+// terminal text is NOT a DOM selection — relying on execCommand to copy "the
+// current selection" silently copies nothing (while still returning true and
+// firing a false "Copied" toast). Instead we attach a one-shot `copy` event
+// listener that injects our EXACT text into the clipboard, then fire the copy.
+// This is the same native-event technique the paste handler uses, and it works
+// over plain HTTP where navigator.clipboard is unavailable. A throwaway focused
+// textarea guarantees execCommand has a selection to act on so the event fires.
+function _execCommandCopy(text) {
+  if (!text) return false;
+  let injected = false;
+  const onCopy = (e) => {
+    try {
+      e.clipboardData.setData("text/plain", text);
+      e.preventDefault();
+      injected = true;
+    } catch (err) { /* fall back to textarea content */ }
+  };
+  document.addEventListener("copy", onCopy, true);
+  const prevFocus = document.activeElement;
   const ta = document.createElement("textarea");
   ta.value = text;
-  ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
+  ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;margin:0;opacity:0;";
   document.body.appendChild(ta);
-  ta.select();
-  const ok = document.execCommand("copy");
+  let ok = false;
+  try {
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    ok = document.execCommand("copy");
+  } catch (e) { ok = false; }
   document.body.removeChild(ta);
-  return ok;
+  document.removeEventListener("copy", onCopy, true);
+  if (prevFocus && typeof prevFocus.focus === "function") {
+    try { prevFocus.focus(); } catch (e) { /* ignore */ }
+  }
+  return ok || injected;
 }
 
 async function _sessionUploadAndInsert(blob, mime) {
@@ -2778,14 +2808,12 @@ function setupSessionClipboard(cterm, container, getWs) {
       return false;
     }
     // Ctrl+V / Ctrl+Shift+V / Alt+V → paste. Always return false so xterm never
-    // emits a ^V control char to the CLI. In a secure context (HTTPS or
-    // localhost) read the clipboard programmatically — same proven path as
-    // right-click, handles text + images. On insecure HTTP the global
-    // capture-phase paste handler picks up the native paste event instead.
+    // emits a ^V control char to the CLI — but do NOT call navigator.clipboard
+    // here. Returning false (without preventDefault) lets the browser fire its
+    // native `paste` event on xterm's focused helper textarea; the global
+    // capture-phase handler then extracts clipboardData. This works in BOTH
+    // HTTPS and HTTP with no permission prompt, so paste can't silently die.
     if ((e.ctrlKey || e.altKey) && e.code === "KeyV") {
-      if (navigator.clipboard && window.isSecureContext) {
-        _sessionPasteFromClipboard();
-      }
       return false;
     }
     return true;
@@ -3840,14 +3868,12 @@ function initTerminalIfNeeded() {
       return false;
     }
     // Ctrl+V / Ctrl+Shift+V / Alt+V → paste. Always return false so xterm never
-    // emits a ^V control char to the CLI. In a secure context (HTTPS or
-    // localhost) read the clipboard programmatically — same proven path as
-    // right-click, handles text + images. On insecure HTTP the global
-    // capture-phase paste handler picks up the native paste event instead.
+    // emits a ^V control char to the CLI — but do NOT call navigator.clipboard
+    // here. Returning false (without preventDefault) lets the browser fire its
+    // native `paste` event on xterm's focused helper textarea; the global
+    // capture-phase handler then extracts clipboardData. This works in BOTH
+    // HTTPS and HTTP with no permission prompt, so paste can't silently die.
     if ((e.ctrlKey || e.altKey) && e.code === "KeyV") {
-      if (navigator.clipboard && window.isSecureContext) {
-        termPasteFromClipboard();
-      }
       return false;
     }
     return true;
@@ -4038,14 +4064,7 @@ function sendResize() {
 }
 
 function termCopyFallback(text) {
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
-  document.body.appendChild(ta);
-  ta.select();
-  const ok = document.execCommand("copy");
-  document.body.removeChild(ta);
-  return ok;
+  return _execCommandCopy(text);
 }
 
 async function uploadAndInsertImage(blob, mime) {
