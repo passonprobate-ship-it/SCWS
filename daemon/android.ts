@@ -154,21 +154,12 @@ export function registerAndroidRoutes(app: Application): void {
 
     const target = `${ip}:${port}`;
     try {
-      // adb pair requires the code via stdin
-      const child = execFile("adb", ["pair", target], { timeout: 30_000 }, (err, stdout, stderr) => {});
-      // Use spawn approach — adb pair reads code from stdin
-      const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-        let out = "", err = "";
-        const proc = execFile("adb", ["pair", target, code], { timeout: 30_000 });
-        proc.stdout?.on("data", d => out += d);
-        proc.stderr?.on("data", d => err += d);
-        proc.on("close", () => resolve({ stdout: out.trim(), stderr: err.trim() }));
-        proc.on("error", e => reject(e));
-      });
-      // Kill the unused child
-      child.kill();
+      // `adb pair <ip:port> <code>` is the complete non-interactive form — the code is
+      // passed as an arg, not via stdin. (A second, interactive `adb pair <ip:port>` spawn
+      // here used to collide on the phone's single-use pairing port and fail the pairing.)
+      const { stdout, stderr } = await runWithStderr("adb", ["pair", target, code], { timeout: 30_000 });
 
-      const output = stdout || stderr;
+      const output = (stdout || stderr || "").trim();
       const paired = output.toLowerCase().includes("successfully paired");
       await storage.logActivity({ action: "adb_pair", details: `adb pair ${target}: ${output}` });
       res.json({ ok: paired, output });
