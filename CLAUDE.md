@@ -39,7 +39,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 /var/www/scws/
 ├── daemon/              ← The control plane (Express 5, port 4000)
 │   ├── dist/index.cjs   ← Built daemon bundle
-│   ├── dist/dashboard.html ← Web dashboard SPA (~8100 lines)
+│   ├── dist/dashboard.html ← Web dashboard SPA (~8500 lines)
 │   ├── .env             ← DATABASE_URL, DASHBOARD_TOKEN, etc.
 │   └── ecosystem.config.cjs ← PM2 config
 ├── projects/            ← Your creations live here
@@ -55,19 +55,25 @@ SPAWN/
 ├── shared/schema.ts     ← Drizzle ORM schema (8 tables)
 ├── daemon/
 │   ├── index.ts         ← Express app, REST routes, auth, dashboard, watchdog
+│   ├── db.ts            ← Drizzle client + fail-fast DATABASE_URL validation
 │   ├── storage.ts       ← IStorage + DatabaseStorage (all DB queries)
 │   ├── projects.ts      ← Project lifecycle (create, start, stop, build, delete)
 │   ├── nginx.ts         ← nginx config generation + reload (uses sudo)
 │   ├── pm2.ts           ← PM2 process management
+│   ├── watchdog.ts      ← Tiered idle/resource watchdog (auto-stop idle projects)
 │   ├── claude.ts        ← Claude CLI wrapper (headless, streaming, abort)
 │   ├── terminal.ts      ← Web terminal (xterm.js + node-pty + WebSocket)
 │   ├── github.ts        ← gh CLI operations
 │   ├── deploy.ts        ← Build + SCP to production servers
 │   ├── notifications.ts ← Multi-channel notifications (Telegram, email, webhook, WhatsApp)
-│   ├── network.ts       ← WiFi scanning, netplan config, Tailscale Funnel
+│   ├── network.ts       ← WiFi scanning, netplan config, Tailscale control + Funnel
 │   ├── android.ts       ← Android SDK, ADB device mgmt, Gradle builds
+│   ├── connections.ts   ← External service connections (VPS, MCP servers) + file ops
+│   ├── mcp.ts           ← MCP server config management (~/.claude/settings.json)
 │   ├── onboarding.ts    ← First-run wizard
-│   └── dashboard.html   ← Single-file SPA (vanilla JS, 7800+ lines, 16+ pages)
+│   ├── logger.ts        ← Timestamped log() helper
+│   ├── asyncHandler.ts  ← Express async route error wrapper
+│   └── dashboard.html   ← Single-file SPA (vanilla JS, 8500+ lines, 16+ pages)
 └── script/build.ts      ← esbuild bundler
 ```
 

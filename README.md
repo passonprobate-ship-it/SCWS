@@ -173,8 +173,10 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 | Channels | `Ctrl+5` | Notification channels — email, webhook, alerts |
 | Cortex | `Ctrl+6` | Scheduler, cron jobs, webhook ingress |
 | Files | `Ctrl+7` | Server filesystem browser |
-| Connections | `Ctrl+8` | External service connections |
+| Connections | `Ctrl+8` | External service connections + Tailscale control & status |
 | VPS | `Ctrl+9` | Remote deploy targets |
+| Android | — | Android SDK status, wireless ADB device management, APK builds |
+| Network | — | WiFi scanning, netplan config, Tailscale Funnel |
 | `Ctrl+K` | | Command palette |
 
 ## Tech Stack
@@ -190,7 +192,7 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 - **Auth**: Bearer token with timing-safe compare
 - **AI**: [OpenCode](https://opencode.ai) and/or Claude Code CLI (headless terminal sessions)
 - **VCS**: Git + GitHub CLI (`gh`)
-- **Updates**: Auto-update via git polling (every 5 minutes)
+- **Updates**: Auto-update via hourly git polling (fetch + ff-only pull, per-project restarts)
 
 ## Database
 
