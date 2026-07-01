@@ -2937,6 +2937,7 @@ function createClaudeTerminal(projectName, tool) {
 
   ws.onopen = () => {
     cterm.writeln("\x1b[32m[Connected]\x1b[0m");
+    entry._reconnectAttempts = 0;
   };
 
   ws.onmessage = (e) => {
@@ -2958,6 +2959,9 @@ function createClaudeTerminal(projectName, tool) {
         activeClaudeSessionId = sid;
         renderClaudeSessionTabs();
         updateSessionsBadge();
+      } else if (msg.type === "timeout") {
+        // Server deliberately ended the session (30-min idle) — do not auto-reconnect
+        entry._timedOut = true;
       } else if (msg.type === "exit") {
         entry._exited = true;
         cterm.writeln("\r\n\x1b[33m[Session ended (code " + (msg.code || 0) + ")]\x1b[0m");
@@ -2971,11 +2975,10 @@ function createClaudeTerminal(projectName, tool) {
   };
 
   ws.onclose = () => {
-    if (!entry._exited) {
-      cterm.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
-      entry.disconnected = true;
-      updateReconnectButton();
-      renderClaudeSessionTabs();
+    if (!entry._exited && !entry._timedOut) {
+      // Transport dropped — the daemon keeps the pty alive for ~10 min, so
+      // auto-reattach with backoff instead of forcing a manual Reconnect click.
+      scheduleClaudeReconnect(entry.sessionId);
     }
   };
 
@@ -3047,17 +3050,54 @@ function reconnectActiveClaudeSession() {
   }
 }
 
+// Auto-reconnect with exponential backoff. The daemon keeps the pty alive for
+// ~10 min after a transport drop and replays buffered output on reattach, so a
+// transient network blip (tab throttle, device sleep, Tailscale path switch)
+// recovers silently instead of stranding the user on a manual Reconnect button.
+function scheduleClaudeReconnect(sessionId) {
+  const entry = claudeTerminals[sessionId];
+  if (!entry || !entry.sessionId) {
+    // Never got a session ID (failed before connect) — nothing to reattach to.
+    return;
+  }
+  if (entry._exited || entry._timedOut) return;
+  if (entry._reconnectTimer) return; // a retry is already pending
+
+  entry._reconnectAttempts = (entry._reconnectAttempts || 0) + 1;
+  const MAX_ATTEMPTS = 10; // ~covers the server's 10-min detach grace window
+  entry.disconnected = true;
+  updateReconnectButton();
+  renderClaudeSessionTabs();
+
+  if (entry._reconnectAttempts > MAX_ATTEMPTS) {
+    entry.term.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
+    return;
+  }
+
+  const delay = Math.min(1000 * Math.pow(2, entry._reconnectAttempts - 1), 15000);
+  entry.term.writeln("\r\n\x1b[33m[Connection lost — reconnecting (attempt " + entry._reconnectAttempts + "/" + MAX_ATTEMPTS + ")…]\x1b[0m");
+  entry._reconnectTimer = setTimeout(() => {
+    entry._reconnectTimer = null;
+    reconnectClaudeSession(sessionId);
+  }, delay);
+}
+
 function reconnectClaudeSession(sessionId) {
   const entry = claudeTerminals[sessionId];
   if (!entry || !entry.sessionId) return;
+  if (entry._reconnectTimer) { clearTimeout(entry._reconnectTimer); entry._reconnectTimer = null; }
   // Close old ws if lingering
   try { entry.ws.close(); } catch {}
 
-  entry.term.writeln("\r\n\x1b[36m[Reconnecting...]\x1b[0m");
-
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  // Include project/tool as a fallback: if the server-side session already
+  // expired (past the 10-min grace), the daemon spawns a fresh one in the right
+  // project cwd instead of a bare system shell. When the session still exists,
+  // the daemon prefers reattach (with replay) and ignores project/tool.
   const url = proto + "//" + location.host + "/api/claude/terminal?token=" + encodeURIComponent(token)
     + "&session=" + encodeURIComponent(entry.sessionId)
+    + (entry.projectName ? "&project=" + encodeURIComponent(entry.projectName) : "")
+    + (entry.tool ? "&tool=" + encodeURIComponent(entry.tool) : "")
     + "&cols=" + entry.term.cols + "&rows=" + entry.term.rows;
   const ws = new WebSocket(url);
   entry.ws = ws;
@@ -3065,6 +3105,7 @@ function reconnectClaudeSession(sessionId) {
 
   ws.onopen = () => {
     entry.term.writeln("\x1b[32m[Reconnected]\x1b[0m");
+    entry._reconnectAttempts = 0;
     updateReconnectButton();
     renderClaudeSessionTabs();
   };
@@ -3078,6 +3119,8 @@ function reconnectClaudeSession(sessionId) {
         entry.sessionId = msg.id;
         renderClaudeSessionTabs();
         updateSessionsBadge();
+      } else if (msg.type === "timeout") {
+        entry._timedOut = true;
       } else if (msg.type === "exit") {
         entry._exited = true;
         entry.term.writeln("\r\n\x1b[33m[Session ended]\x1b[0m");
@@ -3087,11 +3130,8 @@ function reconnectClaudeSession(sessionId) {
   };
 
   ws.onclose = () => {
-    if (!entry._exited) {
-      entry.term.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
-      entry.disconnected = true;
-      updateReconnectButton();
-      renderClaudeSessionTabs();
+    if (!entry._exited && !entry._timedOut) {
+      scheduleClaudeReconnect(entry.sessionId);
     }
   };
   ws.onerror = () => {};
@@ -3109,6 +3149,8 @@ function updateReconnectButton() {
 function cleanupClaudeSession(sessionId) {
   const entry = claudeTerminals[sessionId];
   if (!entry) return;
+  entry._exited = true; // stop any in-flight auto-reconnect from resurrecting this
+  if (entry._reconnectTimer) { clearTimeout(entry._reconnectTimer); entry._reconnectTimer = null; }
   try { entry.ws.close(); } catch {}
   try { entry.term.dispose(); } catch {}
   try { if (entry._resizeObserver) entry._resizeObserver.disconnect(); } catch {}
@@ -3244,13 +3286,17 @@ function reattachClaudeSession(sessionId, projectName, tool) {
   cterm.writeln("\x1b[36m[Reattaching " + toolLabel + " to " + projectName + " session " + sessionId + "...]\x1b[0m");
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  // Carry project/tool so a fresh spawn (session gone server-side) still lands
+  // in the right project cwd instead of defaulting to /var/www/scws.
   const url = proto + "//" + location.host + "/api/claude/terminal?token=" + encodeURIComponent(token)
     + "&session=" + encodeURIComponent(sessionId)
+    + (projectName ? "&project=" + encodeURIComponent(projectName) : "")
+    + (tool ? "&tool=" + encodeURIComponent(tool) : "")
     + "&cols=" + cterm.cols + "&rows=" + cterm.rows;
   const ws = new WebSocket(url);
   const entry = { term: cterm, ws, fitAddon, projectName, container, sessionId, tool };
 
-  ws.onopen = () => { cterm.writeln("\x1b[32m[Reattached]\x1b[0m"); };
+  ws.onopen = () => { cterm.writeln("\x1b[32m[Reattached]\x1b[0m"); entry._reconnectAttempts = 0; };
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -3261,6 +3307,8 @@ function reattachClaudeSession(sessionId, projectName, tool) {
         if (msg.tool) entry.tool = msg.tool;
         renderClaudeSessionTabs();
         updateSessionsBadge();
+      } else if (msg.type === "timeout") {
+        entry._timedOut = true;
       } else if (msg.type === "exit") {
         entry._exited = true;
         cterm.writeln("\r\n\x1b[33m[Session ended]\x1b[0m");
@@ -3269,11 +3317,8 @@ function reattachClaudeSession(sessionId, projectName, tool) {
     } catch {}
   };
   ws.onclose = () => {
-    if (!entry._exited) {
-      cterm.writeln("\r\n\x1b[31m[Disconnected]\x1b[0m — press Reconnect or click the tab to retry");
-      entry.disconnected = true;
-      updateReconnectButton();
-      renderClaudeSessionTabs();
+    if (!entry._exited && !entry._timedOut) {
+      scheduleClaudeReconnect(entry.sessionId);
     }
   };
   ws.onerror = () => {};

@@ -242,6 +242,13 @@ function setupClaudeSessionHandlers(session: ClaudeSession): void {
 
   // PTY output → WebSocket + buffer
   shell.onData((data: string) => {
+    // A Claude session doing autonomous work (long task, streaming output) is NOT
+    // idle just because the user isn't typing. Reset the idle timer on output too,
+    // so an actively-working session is never idle-timed-out mid-task. Only a truly
+    // silent session (no output AND no input) gets reaped after IDLE_TIMEOUT_MS.
+    // Skip while detached — then session.idleTimer is the 10-min detach reaper,
+    // which must be allowed to fire when no client is coming back.
+    if (!session.detached) resetIdleTimer(session, claudeSessions);
     // Always buffer regardless of WebSocket state
     session.outputBuffer.push(data);
     if (session.outputBuffer.length > MAX_OUTPUT_BUFFER) {
