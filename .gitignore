@@ -43,6 +43,8 @@ projects/*
 !projects/spawn-vps/
 !projects/spawn-pi/
 !projects/spawn-mcp/
+!projects/spawn-browser/
 
 # === Backup token (sourced by offsite script) ===
 scripts/.backup-token
+projects/spectra/
