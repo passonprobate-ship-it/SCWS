@@ -21,7 +21,7 @@ nginx: `/spawn-browser/` → noVNC UI; `/spawn-browser/websockify` → VNC webso
 
 ## Environment
 - **Port**: 5046 (websockify/noVNC) · VNC 5900 · CDP 9222 — all localhost-only
-- **Process**: PM2 `spawn-browser` (64MB heap — supervisor only; Chromium lives
+- **Process**: PM2 `scws-spawn-browser` when started via daemon API (preferred; survives daemon boot-reconcile) — 64MB heap — supervisor only; Chromium lives
   in its own systemd user scope, outside PM2 memory accounting)
 - **User URL**: `http://<host>/browser` (or https://spawn.tail852587.ts.net:8443/browser)
 - **VNC password**: in `.vncpass` (never commit)
