@@ -2807,6 +2807,19 @@ function setupSessionClipboard(cterm, container, getWs) {
       }
       return false;
     }
+    // Ctrl+Insert → copy selection (Windows-native copy combo; Chrome/Edge
+    // hijack Ctrl+Shift+C as the DevTools "Inspect" shortcut on Windows)
+    if (e.ctrlKey && e.code === "Insert") {
+      const sel = cterm.getSelection();
+      if (sel) {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(sel).catch(() => _sessionCopyFallback(sel));
+        } else {
+          _sessionCopyFallback(sel);
+        }
+      }
+      return false;
+    }
     // Ctrl+V / Ctrl+Shift+V / Alt+V → paste. Always return false so xterm never
     // emits a ^V control char to the CLI — but do NOT call navigator.clipboard
     // here. Returning false (without preventDefault) lets the browser fire its
@@ -3885,7 +3898,7 @@ function initTerminalIfNeeded() {
   });
 
   // Clipboard: auto-copy on mouseup (user gesture required for clipboard API)
-  document.getElementById("terminal").addEventListener("mouseup", () => {
+  container.addEventListener("mouseup", () => {
     const sel = term.getSelection();
     if (!sel) return;
     if (navigator.clipboard && window.isSecureContext) {
@@ -3902,6 +3915,19 @@ function initTerminalIfNeeded() {
     if (e.type !== "keydown") return true;
     // Ctrl+Shift+C → copy selection (prevent sending to PTY)
     if (e.ctrlKey && e.shiftKey && e.code === "KeyC") {
+      const sel = term.getSelection();
+      if (sel) {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(sel).catch(() => termCopyFallback(sel));
+        } else {
+          termCopyFallback(sel);
+        }
+      }
+      return false;
+    }
+    // Ctrl+Insert → copy selection (Windows-native copy combo; Chrome/Edge
+    // hijack Ctrl+Shift+C as the DevTools "Inspect" shortcut on Windows)
+    if (e.ctrlKey && e.code === "Insert") {
       const sel = term.getSelection();
       if (sel) {
         if (navigator.clipboard && window.isSecureContext) {
