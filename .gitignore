@@ -49,3 +49,4 @@ projects/*
 scripts/.backup-token
 projects/spectra/
 projects/quidpos/
+projects/quid-mine/
