@@ -48,3 +48,4 @@ projects/*
 # === Backup token (sourced by offsite script) ===
 scripts/.backup-token
 projects/spectra/
+projects/quidpos/
