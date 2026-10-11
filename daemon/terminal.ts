@@ -13,7 +13,9 @@ const pty = require("node-pty");
 
 const MAX_SESSIONS = 3;
 const MAX_CLAUDE_SESSIONS = 5;
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+// Idle timeout for attached sessions, in minutes. 0 (default) = never time out.
+const IDLE_TIMEOUT_MIN = Math.max(0, Number(process.env.TERMINAL_IDLE_TIMEOUT_MIN) || 0);
+const IDLE_TIMEOUT_MS = IDLE_TIMEOUT_MIN * 60 * 1000;
 const PING_INTERVAL_MS = 25_000;
 const PROJECTS_DIR = "/var/www/scws/projects";
 
@@ -566,13 +568,14 @@ function cleanupSession(id: string, map: Map<string, TerminalSession>): void {
 }
 
 function resetIdleTimer(session: TerminalSession, map: Map<string, TerminalSession>): void {
-  if (session.idleTimer) clearTimeout(session.idleTimer);
+  if (session.idleTimer) { clearTimeout(session.idleTimer); session.idleTimer = null; }
+  if (IDLE_TIMEOUT_MS <= 0) return; // idle timeout disabled — attached sessions live until closed
   session.idleTimer = setTimeout(() => {
     log(`Terminal session ${session.id} idle timeout`, "terminal");
     if (session.ws.readyState === WebSocket.OPEN) {
       session.ws.send(JSON.stringify({
         type: "output",
-        data: "\r\n\x1b[33m[Session timed out after 30 minutes of inactivity]\x1b[0m\r\n",
+        data: `\r\n\x1b[33m[Session timed out after ${IDLE_TIMEOUT_MIN} minutes of inactivity]\x1b[0m\r\n`,
       }));
       // Signal a deliberate termination so the client doesn't auto-reconnect into a fresh shell
       session.ws.send(JSON.stringify({ type: "timeout" }));
