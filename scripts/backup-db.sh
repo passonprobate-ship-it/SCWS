@@ -52,12 +52,20 @@ for db in $(psql -U scws -h localhost -d postgres -t -A -c "SELECT datname FROM 
 done
 
 # --- Project Source Code ---
+# Root-owned Docker volume files (e.g. homecore/data) are unreadable and make tar
+# exit 2; under `set -e` that used to abort the script before configs + pruning ran.
+# Tolerate it: log the skipped files and keep the archive tar produced.
+TAR_RC=0
 tar czf "${BACKUP_DIR}/projects_${TIMESTAMP}.tar.gz" \
     --exclude='node_modules' \
     --exclude='dist' \
     --exclude='.git' \
     --exclude='*.log' \
-    -C /var/www/scws projects/ 2>/dev/null
+    --warning=no-file-ignored \
+    -C /var/www/scws projects/ 2> >(sed "s/^/[$(date)] WARN: /" >&2) || TAR_RC=$?
+if [ "$TAR_RC" -gt 1 ]; then
+    echo "[$(date)] WARN: tar exited ${TAR_RC} for projects (some files unreadable) — archive kept" >&2
+fi
 verify_backup "${BACKUP_DIR}/projects_${TIMESTAMP}.tar.gz" "projects"
 
 # --- Nginx Configs ---
