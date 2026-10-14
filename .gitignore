@@ -44,6 +44,7 @@ projects/*
 !projects/spawn-pi/
 !projects/spawn-mcp/
 !projects/spawn-browser/
+!projects/spawn-voice/
 
 # === Backup token (sourced by offsite script) ===
 scripts/.backup-token

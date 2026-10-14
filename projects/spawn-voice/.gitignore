@@ -1,0 +1,4 @@
+node_modules/
+whisper.cpp/
+models/
+build.log

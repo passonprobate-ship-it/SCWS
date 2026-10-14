@@ -1,0 +1,14 @@
+{
+  "name": "spawn-voice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Whisper speech-to-text for SPAWN dashboard voice dictation",
+  "main": "server.cjs",
+  "scripts": {
+    "setup": "bash setup.sh",
+    "start": "node server.cjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

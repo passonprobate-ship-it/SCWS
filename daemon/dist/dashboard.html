@@ -2665,17 +2665,23 @@ function _getActiveSessionWs() {
 
 // ── Voice dictation (main terminal + every Claude/project session) ──
 // Hold Ctrl (≥350ms) = push-to-talk; double-tap Ctrl = lock on, double-tap
-// again = off. Uses the browser's Web Speech API (Chrome/Edge — the browser
-// vendor's speech service does the transcription). Interim words show live in
-// an overlay that never takes focus or pointer events; each finished phrase is
-// typed into the on-screen terminal (no Enter), so keyboard + mouse stay yours
-// and you can fix mistakes in the prompt while still talking.
+// again = off. Speech is transcribed on SPAWN itself by the spawn-voice project
+// (local whisper.cpp, /spawn-voice/ws) — works in any browser, audio never
+// leaves the box. The mic is downsampled here to 16 kHz Int16 and streamed;
+// live interim text shows in an overlay that never takes focus or pointer
+// events, and each finished phrase is typed into the on-screen terminal (no
+// Enter), so keyboard + mouse stay yours and you can fix words while talking.
+// spawn-voice is started on demand via the daemon API (watchdog idle-stops it).
 // Requires a secure context (https://spawn.tail852587.ts.net:8443/) and the
 // nginx Permissions-Policy `microphone=(self)` (nginx/security-headers.conf).
 const VOICE_HOLD_MS = 350, VOICE_TAP_MAX_MS = 300, VOICE_DOUBLE_TAP_MS = 450;
+const VOICE_SOCK_IDLE_MS = 5 * 60_000, VOICE_MAX_PENDING = 160; // ~15 s of buffered chunks
 const _voice = {
   mode: null,          // null | "hold" | "lock"
-  run: null,           // { rec, target, committed, lastFinal, interim }
+  finishing: false,    // stopped, waiting for the last phrase
+  target: null, committed: false, lastFinal: "", interim: "", status: "", level: 0,
+  mic: null,           // { stream, ctx, node, pos }
+  sock: null, connecting: null, runOpen: false, pending: [], sockIdleTimer: null, finishTimer: null,
   ctrlDown: false, ctrlClean: false, ctrlDownAt: 0, lastTapAt: 0, holdTimer: null,
   overlay: null,
 };
@@ -2698,36 +2704,39 @@ function _voiceResolveTarget() {
   return null;
 }
 
-function _voiceWs(t) {
+function _voiceTermWs(t) {
   const ws = t.kind === "session" ? t.entry.ws : termWs;
   return ws && ws.readyState === WebSocket.OPEN ? ws : null;
 }
 
-function _voiceType(run, text) {
+function _voiceType(text) {
   text = text.replace(/\s+/g, " ").trim();
   if (!text) return;
-  const ws = _voiceWs(_voiceResolveTarget() || run.target);
+  const t = _voiceResolveTarget() || _voice.target;
+  const ws = t && _voiceTermWs(t);
   if (!ws) return;
-  ws.send(JSON.stringify({ type: "input", data: (run.committed ? " " : "") + text }));
-  run.committed = true;
-  run.lastFinal = text;
+  ws.send(JSON.stringify({ type: "input", data: (_voice.committed ? " " : "") + text }));
+  _voice.committed = true;
+  _voice.lastFinal = text;
 }
 
 function _voiceOverlay() {
   if (_voice.overlay) return _voice.overlay;
   const st = document.createElement("style");
   st.textContent = "@keyframes voicePulse{0%,100%{opacity:1}50%{opacity:.3}}" +
-    "#voice-overlay{position:fixed;z-index:9999;pointer-events:none;transform:translateX(-50%);max-width:min(720px,92vw);" +
+    "#voice-overlay{position:fixed;z-index:9999;pointer-events:none;transform:translateX(-50%);max-width:min(720px,92vw);min-width:260px;" +
     "padding:8px 14px;border-radius:10px;background:rgba(10,10,15,.94);border:1px solid #00d4ff;color:#e4e4ef;" +
     "font:14px/1.45 'SF Mono','Fira Code','Cascadia Code',Consolas,monospace;box-shadow:0 6px 22px rgba(0,0,0,.55);display:none}" +
-    "#voice-overlay .vo-head{font-size:11px;color:#6b6b80;margin-bottom:3px;letter-spacing:.02em}" +
-    "#voice-overlay .vo-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:6px;animation:voicePulse 1.2s infinite}" +
+    "#voice-overlay .vo-head{display:flex;align-items:center;gap:6px;font-size:11px;color:#6b6b80;margin-bottom:3px;letter-spacing:.02em}" +
+    "#voice-overlay .vo-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;animation:voicePulse 1.2s infinite;flex:none}" +
+    "#voice-overlay .vo-meter{width:40px;height:4px;border-radius:2px;background:#1e1e2a;overflow:hidden;flex:none}" +
+    "#voice-overlay .vo-meter i{display:block;height:100%;width:0;background:#22c55e;transition:width .08s}" +
     "#voice-overlay .vo-final{color:#6b6b80}#voice-overlay .vo-interim{color:#e4e4ef}";
   document.head.appendChild(st);
   const o = document.createElement("div");
   o.id = "voice-overlay";
   o.setAttribute("aria-live", "polite");
-  o.innerHTML = '<div class="vo-head"><span class="vo-dot"></span><span class="vo-label"></span></div>' +
+  o.innerHTML = '<div class="vo-head"><span class="vo-dot"></span><span class="vo-meter"><i></i></span><span class="vo-label"></span></div>' +
     '<div><span class="vo-final"></span><span class="vo-interim"></span></div>';
   document.body.appendChild(o);
   _voice.overlay = o;
@@ -2736,82 +2745,210 @@ function _voiceOverlay() {
 
 function _voiceRender() {
   const o = _voiceOverlay();
-  const run = _voice.run;
-  if (!run || !run.rec) { o.style.display = "none"; return; }
-  o.querySelector(".vo-label").textContent =
-    _voice.mode === "hold" ? "Listening · release Ctrl to stop" :
+  if (!_voice.mode && !_voice.finishing) { o.style.display = "none"; return; }
+  const label = _voice.mode === "hold" ? "Listening · release Ctrl to stop" :
     _voice.mode === "lock" ? "Listening · locked · double-tap Ctrl to stop" : "Finishing…";
-  o.querySelector(".vo-final").textContent = run.lastFinal ? run.lastFinal + " " : "";
-  o.querySelector(".vo-interim").textContent = run.interim || (run.lastFinal ? "" : "…");
-  const el = (_voiceResolveTarget() || run.target).el;
-  const r = el ? el.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+  o.querySelector(".vo-label").textContent = _voice.status ? label + " · " + _voice.status : label;
+  o.querySelector(".vo-meter i").style.width = Math.min(100, Math.round(_voice.level * 400)) + "%";
+  o.querySelector(".vo-final").textContent = _voice.lastFinal ? _voice.lastFinal + " " : "";
+  o.querySelector(".vo-interim").textContent = _voice.interim || (_voice.lastFinal ? "" : "…");
+  const t = _voiceResolveTarget() || _voice.target;
+  const r = t && t.el ? t.el.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
   o.style.top = Math.max(8, r.top + 10) + "px";
   o.style.left = (r.left + r.width / 2) + "px";
   o.style.display = "block";
 }
 
-function _voiceStart(mode) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const target = _voiceResolveTarget();
-  if (!target) return; // no terminal on screen — bare Ctrl does nothing
-  if (!window.isSecureContext) { toast("Voice input needs HTTPS — open https://spawn.tail852587.ts.net:8443/", "error", 6000); return; }
-  // Brave exposes the API but ships without Google's speech service, so it always fails with "network"
-  if (!SR || navigator.brave) { toast("Voice input needs Chrome or Edge (Brave and Firefox don't include a speech service)", "error", 6000); return; }
-  if (_voice.run && _voice.run.rec) { try { _voice.run.rec.abort(); } catch {} }
+// ── spawn-voice socket (kept open a few minutes so the next press is instant) ──
+function _voiceSockOpen() {
+  return _voice.sock && _voice.sock.readyState === WebSocket.OPEN;
+}
 
-  const rec = new SR();
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.lang = navigator.language || "en-US";
-  const run = { rec, target, committed: false, lastFinal: "", interim: "" };
-  _voice.run = run;
-  _voice.mode = mode;
+function _voiceSend(obj) {
+  if (_voiceSockOpen()) _voice.sock.send(typeof obj === "string" || obj instanceof ArrayBuffer ? obj : JSON.stringify(obj));
+}
 
-  rec.onresult = (e) => {
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const res = e.results[i];
-      if (res.isFinal) _voiceType(run, res[0].transcript);
-      else interim += res[0].transcript;
+function _voiceDial() {
+  return new Promise((resolve, reject) => {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(proto + "//" + location.host + "/spawn-voice/ws?token=" + encodeURIComponent(token));
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => resolve(ws);
+    ws.onerror = () => reject(new Error("connect failed"));
+    ws.onclose = () => reject(new Error("closed"));
+  });
+}
+
+function _voiceEnsureSocket() {
+  if (_voiceSockOpen()) return Promise.resolve();
+  if (_voice.connecting) return _voice.connecting;
+  _voice.connecting = (async () => {
+    const deadline = Date.now() + 30_000;
+    let started = false;
+    while (Date.now() < deadline) {
+      try {
+        const ws = await _voiceDial();
+        _voiceAttach(ws);
+        return;
+      } catch {
+        if (!started) {
+          started = true;
+          _voice.status = "starting voice engine…";
+          _voiceRender();
+          try { await api("/api/projects/spawn-voice/start", { method: "POST" }); }
+          catch (e) {
+            toast(/not found/i.test(e.message) ? "Voice engine isn't installed on this SPAWN — see projects/spawn-voice/CLAUDE.md"
+              : "Couldn't start spawn-voice: " + e.message, "error", 7000);
+            break;
+          }
+        }
+        await new Promise(r => setTimeout(r, 700));
+      }
     }
-    run.interim = interim;
-    if (_voice.run === run) _voiceRender();
+    if (!_voiceSockOpen()) {
+      toast("Voice engine didn't come up — check the spawn-voice project", "error", 6000);
+      _voiceStop(true);
+    }
+  })().finally(() => { _voice.connecting = null; });
+  return _voice.connecting;
+}
+
+function _voiceAttach(ws) {
+  _voice.sock = ws;
+  ws.onerror = null;
+  ws.onclose = () => {
+    if (_voice.sock !== ws) return;
+    _voice.sock = null;
+    _voice.runOpen = false;
+    if (_voice.mode || _voice.finishing) { _voice.status = "reconnecting…"; _voiceRender(); _voiceEnsureSocket(); }
   };
-  rec.onerror = (e) => {
-    const msg = {
-      "not-allowed": "Microphone blocked — allow it via the icon in the address bar",
-      "service-not-allowed": "Microphone blocked — allow it via the icon in the address bar",
-      "audio-capture": "No microphone found",
-      "network": "Voice: can't reach the browser's speech service",
-    }[e.error];
-    if (msg && _voice.run === run) { _voice.mode = null; toast(msg, "error", 6000); }
-    // "no-speech" / "aborted" fall through to onend
-  };
-  rec.onend = () => {
-    if (_voice.run !== run) return;
-    // Chrome ends continuous recognition after silence — keep listening while held/locked
-    if (_voice.mode) { try { rec.start(); return; } catch {} }
-    run.rec = null;
-    run.interim = "";
+  ws.onmessage = (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m.type === "ready") { _voice.status = ""; }
+    else if (m.type === "interim") { _voice.interim = m.text || ""; }
+    else if (m.type === "final") { _voiceType(m.text || ""); _voice.interim = ""; }
+    else if (m.type === "done") { if (!_voice.mode) _voiceFinished(); return; }
+    else if (m.type === "error") { toast(m.message || "Voice error", "error", 5000); }
     _voiceRender();
   };
-  try { rec.start(); } catch { _voice.mode = null; return; }
+  // A run may already be under way (mic opened while we were connecting)
+  if (_voice.mode || _voice.finishing) _voiceOpenRun();
+}
+
+// Tell the server a run started and hand over audio captured while connecting
+function _voiceOpenRun() {
+  _voiceSend({ type: "start" });
+  _voice.runOpen = true;
+  for (const buf of _voice.pending.splice(0)) _voice.sock.send(buf);
+  if (!_voice.mode && _voice.finishing) _voiceSend({ type: "stop" });
+}
+
+function _voiceFinished() {
+  clearTimeout(_voice.finishTimer);
+  _voice.finishing = false;
+  _voice.interim = "";
+  _voice.runOpen = false;
+  _voiceRender();
+  clearTimeout(_voice.sockIdleTimer);
+  _voice.sockIdleTimer = setTimeout(() => {
+    if (!_voice.mode && !_voice.finishing && _voice.sock) { const s = _voice.sock; _voice.sock = null; s.close(); }
+  }, VOICE_SOCK_IDLE_MS);
+}
+
+// ── Microphone → 16 kHz Int16 ─────────────────────────────────────
+async function _voiceOpenMic() {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (e) {
+    const blocked = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+    toast(blocked ? "Microphone blocked — allow it via the icon in the address bar"
+      : "No microphone available (" + (e && e.name || "error") + ")", "error", 6000);
+    _voiceStop(true);
+    return;
+  }
+  if (!_voice.mode) { stream.getTracks().forEach(t => t.stop()); return; } // released while the prompt was up
+  const ctx = new AudioContext();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  const src = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(2048, 1, 1);
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  const mic = { stream, ctx, node, pos: 0 };
+  const ratio = ctx.sampleRate / 16000;
+  node.onaudioprocess = (ev) => {
+    if (_voice.mic !== mic) return;
+    const input = ev.inputBuffer.getChannelData(0);
+    // Box-filter decimation to 16 kHz (good enough for speech)
+    const out = new Int16Array(Math.ceil((input.length - mic.pos) / ratio) + 1);
+    let n = 0, t = mic.pos, sq = 0;
+    for (; t < input.length; t += ratio) {
+      const a = Math.floor(t), b = Math.min(input.length, Math.floor(t + ratio));
+      let s = 0;
+      for (let i = a; i < b; i++) s += input[i];
+      const v = Math.max(-1, Math.min(1, s / Math.max(1, b - a)));
+      sq += v * v;
+      out[n++] = v * 32767;
+    }
+    mic.pos = t - input.length;
+    if (!n) return;
+    _voice.level = Math.sqrt(sq / n);
+    const buf = out.buffer.slice(0, n * 2);
+    if (_voiceSockOpen() && _voice.runOpen) _voice.sock.send(buf);
+    else if (_voice.pending.push(buf) > VOICE_MAX_PENDING) _voice.pending.shift();
+    _voiceRender();
+  };
+  src.connect(node);
+  node.connect(mute);
+  mute.connect(ctx.destination);
+  _voice.mic = mic;
+}
+
+function _voiceCloseMic() {
+  const mic = _voice.mic;
+  _voice.mic = null;
+  _voice.level = 0;
+  if (!mic) return;
+  try { mic.node.disconnect(); } catch {}
+  mic.stream.getTracks().forEach(t => t.stop());
+  mic.ctx.close().catch(() => {});
+}
+
+function _voiceStart(mode) {
+  const target = _voiceResolveTarget();
+  if (!target) return; // no terminal on screen — bare Ctrl does nothing
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    toast("Voice input needs HTTPS — open https://spawn.tail852587.ts.net:8443/", "error", 6000);
+    return;
+  }
+  clearTimeout(_voice.sockIdleTimer);
+  clearTimeout(_voice.finishTimer);
+  Object.assign(_voice, { mode, target, finishing: false, committed: false, lastFinal: "", interim: "", status: "", pending: [] });
+  if (_voiceSockOpen()) _voiceOpenRun();
+  else { _voice.runOpen = false; _voiceEnsureSocket(); }
+  _voiceOpenMic();
   _voiceRender();
 }
 
-// discard=true drops the pending phrase; otherwise stop() still delivers it.
+// discard=true drops what's pending; otherwise the last phrase is still typed.
 function _voiceStop(discard) {
+  if (!_voice.mode && !_voice.finishing) return;
   _voice.mode = null;
-  const run = _voice.run;
-  if (!run || !run.rec) { _voiceRender(); return; }
-  const rec = run.rec;
+  _voiceCloseMic();
   if (discard) {
-    run.rec = null;
-    try { rec.abort(); } catch {}
-  } else {
-    try { rec.stop(); } catch {}
-    setTimeout(() => { if (run.rec === rec && !_voice.mode) { try { rec.abort(); } catch {} run.rec = null; _voiceRender(); } }, 3000);
+    _voice.pending = [];
+    _voiceSend({ type: "cancel" });
+    _voiceFinished();
+    return;
   }
+  _voice.finishing = true;
+  if (_voiceSockOpen() && _voice.runOpen) _voiceSend({ type: "stop" });
+  // else _voiceOpenRun sends start + buffered audio + stop once connected
+  clearTimeout(_voice.finishTimer);
+  _voice.finishTimer = setTimeout(_voiceFinished, 15_000);
   _voiceRender();
 }
 
@@ -2836,7 +2973,7 @@ window.addEventListener("keydown", (e) => {
     _voice.ctrlClean = false;
     clearTimeout(_voice.holdTimer);
     // Ctrl was the start of a shortcut (Ctrl+C, Ctrl+V…), not push-to-talk
-    if (_voice.mode === "hold" && !_voice.run.committed) _voiceStop(true);
+    if (_voice.mode === "hold" && !_voice.committed) _voiceStop(true);
   }
   _voice.lastTapAt = 0; // typing between taps breaks a double-tap
 }, true);
