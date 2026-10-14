@@ -2663,6 +2663,211 @@ function _getActiveSessionWs() {
   return entry && entry.ws && entry.ws.readyState === WebSocket.OPEN ? entry.ws : null;
 }
 
+// ── Voice dictation (main terminal + every Claude/project session) ──
+// Hold Ctrl (≥350ms) = push-to-talk; double-tap Ctrl = lock on, double-tap
+// again = off. Uses the browser's Web Speech API (Chrome/Edge — the browser
+// vendor's speech service does the transcription). Interim words show live in
+// an overlay that never takes focus or pointer events; each finished phrase is
+// typed into the on-screen terminal (no Enter), so keyboard + mouse stay yours
+// and you can fix mistakes in the prompt while still talking.
+// Requires a secure context (https://spawn.tail852587.ts.net:8443/) and the
+// nginx Permissions-Policy `microphone=(self)` (nginx/security-headers.conf).
+const VOICE_HOLD_MS = 350, VOICE_TAP_MAX_MS = 300, VOICE_DOUBLE_TAP_MS = 450;
+const _voice = {
+  mode: null,          // null | "hold" | "lock"
+  run: null,           // { rec, target, committed, lastFinal, interim }
+  ctrlDown: false, ctrlClean: false, ctrlDownAt: 0, lastTapAt: 0, holdTimer: null,
+  overlay: null,
+};
+
+// Which terminal dictation goes to: the focused one, else the one on screen.
+function _voiceResolveTarget() {
+  const a = document.activeElement;
+  if (a && a.closest) {
+    const wrap = a.closest(".claude-term-wrapper");
+    if (wrap) {
+      const entry = Object.values(claudeTerminals).find(en => en.container === wrap);
+      if (entry) return { kind: "session", entry, el: wrap };
+    }
+    if (a.closest("#terminal-container")) return { kind: "main", el: document.getElementById("terminal-container") };
+  }
+  const entry = activeClaudeSessionId && claudeTerminals[activeClaudeSessionId];
+  if (entry && entry.container && entry.container.offsetParent) return { kind: "session", entry, el: entry.container };
+  const main = document.getElementById("terminal-container");
+  if (main && main.offsetParent && term) return { kind: "main", el: main };
+  return null;
+}
+
+function _voiceWs(t) {
+  const ws = t.kind === "session" ? t.entry.ws : termWs;
+  return ws && ws.readyState === WebSocket.OPEN ? ws : null;
+}
+
+function _voiceType(run, text) {
+  text = text.replace(/\s+/g, " ").trim();
+  if (!text) return;
+  const ws = _voiceWs(_voiceResolveTarget() || run.target);
+  if (!ws) return;
+  ws.send(JSON.stringify({ type: "input", data: (run.committed ? " " : "") + text }));
+  run.committed = true;
+  run.lastFinal = text;
+}
+
+function _voiceOverlay() {
+  if (_voice.overlay) return _voice.overlay;
+  const st = document.createElement("style");
+  st.textContent = "@keyframes voicePulse{0%,100%{opacity:1}50%{opacity:.3}}" +
+    "#voice-overlay{position:fixed;z-index:9999;pointer-events:none;transform:translateX(-50%);max-width:min(720px,92vw);" +
+    "padding:8px 14px;border-radius:10px;background:rgba(10,10,15,.94);border:1px solid #00d4ff;color:#e4e4ef;" +
+    "font:14px/1.45 'SF Mono','Fira Code','Cascadia Code',Consolas,monospace;box-shadow:0 6px 22px rgba(0,0,0,.55);display:none}" +
+    "#voice-overlay .vo-head{font-size:11px;color:#6b6b80;margin-bottom:3px;letter-spacing:.02em}" +
+    "#voice-overlay .vo-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:6px;animation:voicePulse 1.2s infinite}" +
+    "#voice-overlay .vo-final{color:#6b6b80}#voice-overlay .vo-interim{color:#e4e4ef}";
+  document.head.appendChild(st);
+  const o = document.createElement("div");
+  o.id = "voice-overlay";
+  o.setAttribute("aria-live", "polite");
+  o.innerHTML = '<div class="vo-head"><span class="vo-dot"></span><span class="vo-label"></span></div>' +
+    '<div><span class="vo-final"></span><span class="vo-interim"></span></div>';
+  document.body.appendChild(o);
+  _voice.overlay = o;
+  return o;
+}
+
+function _voiceRender() {
+  const o = _voiceOverlay();
+  const run = _voice.run;
+  if (!run || !run.rec) { o.style.display = "none"; return; }
+  o.querySelector(".vo-label").textContent =
+    _voice.mode === "hold" ? "Listening · release Ctrl to stop" :
+    _voice.mode === "lock" ? "Listening · locked · double-tap Ctrl to stop" : "Finishing…";
+  o.querySelector(".vo-final").textContent = run.lastFinal ? run.lastFinal + " " : "";
+  o.querySelector(".vo-interim").textContent = run.interim || (run.lastFinal ? "" : "…");
+  const el = (_voiceResolveTarget() || run.target).el;
+  const r = el ? el.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+  o.style.top = Math.max(8, r.top + 10) + "px";
+  o.style.left = (r.left + r.width / 2) + "px";
+  o.style.display = "block";
+}
+
+function _voiceStart(mode) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const target = _voiceResolveTarget();
+  if (!target) return; // no terminal on screen — bare Ctrl does nothing
+  if (!window.isSecureContext) { toast("Voice input needs HTTPS — open https://spawn.tail852587.ts.net:8443/", "error", 6000); return; }
+  if (!SR) { toast("Voice input needs Chrome or Edge", "error", 4000); return; }
+  if (_voice.run && _voice.run.rec) { try { _voice.run.rec.abort(); } catch {} }
+
+  const rec = new SR();
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = navigator.language || "en-US";
+  const run = { rec, target, committed: false, lastFinal: "", interim: "" };
+  _voice.run = run;
+  _voice.mode = mode;
+
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) _voiceType(run, res[0].transcript);
+      else interim += res[0].transcript;
+    }
+    run.interim = interim;
+    if (_voice.run === run) _voiceRender();
+  };
+  rec.onerror = (e) => {
+    const msg = {
+      "not-allowed": "Microphone blocked — allow it via the icon in the address bar",
+      "service-not-allowed": "Microphone blocked — allow it via the icon in the address bar",
+      "audio-capture": "No microphone found",
+      "network": "Voice: can't reach the browser's speech service",
+    }[e.error];
+    if (msg && _voice.run === run) { _voice.mode = null; toast(msg, "error", 6000); }
+    // "no-speech" / "aborted" fall through to onend
+  };
+  rec.onend = () => {
+    if (_voice.run !== run) return;
+    // Chrome ends continuous recognition after silence — keep listening while held/locked
+    if (_voice.mode) { try { rec.start(); return; } catch {} }
+    run.rec = null;
+    run.interim = "";
+    _voiceRender();
+  };
+  try { rec.start(); } catch { _voice.mode = null; return; }
+  _voiceRender();
+}
+
+// discard=true drops the pending phrase; otherwise stop() still delivers it.
+function _voiceStop(discard) {
+  _voice.mode = null;
+  const run = _voice.run;
+  if (!run || !run.rec) { _voiceRender(); return; }
+  const rec = run.rec;
+  if (discard) {
+    run.rec = null;
+    try { rec.abort(); } catch {}
+  } else {
+    try { rec.stop(); } catch {}
+    setTimeout(() => { if (run.rec === rec && !_voice.mode) { try { rec.abort(); } catch {} run.rec = null; _voiceRender(); } }, 3000);
+  }
+  _voiceRender();
+}
+
+// Ctrl gestures — capture phase, never preventDefault, so xterm and every
+// Ctrl+key shortcut behave exactly as before. A Ctrl press only counts if no
+// other key or mouse button joins it.
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Control") {
+    if (e.repeat || _voice.ctrlDown) return;
+    _voice.ctrlDown = true;
+    _voice.ctrlClean = !(e.shiftKey || e.altKey || e.metaKey);
+    _voice.ctrlDownAt = Date.now();
+    clearTimeout(_voice.holdTimer);
+    if (!_voice.mode && _voice.ctrlClean) {
+      _voice.holdTimer = setTimeout(() => {
+        if (_voice.ctrlDown && _voice.ctrlClean && !_voice.mode) _voiceStart("hold");
+      }, VOICE_HOLD_MS);
+    }
+    return;
+  }
+  if (_voice.ctrlDown) {
+    _voice.ctrlClean = false;
+    clearTimeout(_voice.holdTimer);
+    // Ctrl was the start of a shortcut (Ctrl+C, Ctrl+V…), not push-to-talk
+    if (_voice.mode === "hold" && !_voice.run.committed) _voiceStop(true);
+  }
+  _voice.lastTapAt = 0; // typing between taps breaks a double-tap
+}, true);
+
+window.addEventListener("keyup", (e) => {
+  if (e.key !== "Control") return;
+  const wasClean = _voice.ctrlClean, held = Date.now() - _voice.ctrlDownAt;
+  _voice.ctrlDown = false;
+  clearTimeout(_voice.holdTimer);
+  if (_voice.mode === "hold") { _voiceStop(false); _voice.lastTapAt = 0; return; }
+  if (!wasClean || held > VOICE_TAP_MAX_MS) { _voice.lastTapAt = 0; return; }
+  const now = Date.now();
+  if (_voice.lastTapAt && now - _voice.lastTapAt <= VOICE_DOUBLE_TAP_MS) {
+    _voice.lastTapAt = 0;
+    if (_voice.mode === "lock") _voiceStop(false); else _voiceStart("lock");
+  } else {
+    _voice.lastTapAt = now;
+  }
+}, true);
+
+window.addEventListener("mousedown", () => {
+  if (_voice.ctrlDown) { _voice.ctrlClean = false; clearTimeout(_voice.holdTimer); }
+  _voice.lastTapAt = 0;
+}, true);
+
+// Losing the window mid-hold means we never see the Ctrl keyup
+window.addEventListener("blur", () => {
+  _voice.ctrlDown = false;
+  clearTimeout(_voice.holdTimer);
+  if (_voice.mode === "hold") _voiceStop(false);
+});
+
 function _sessionCopyFallback(text) {
   return _execCommandCopy(text);
 }
