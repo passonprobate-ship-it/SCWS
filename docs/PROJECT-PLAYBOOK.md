@@ -673,7 +673,7 @@ pm2 restart my-app
 
 ## Dashboard HTML Editing Guide
 
-The dashboard is a single-file SPA at `daemon/dist/dashboard.html` (8100+ lines, vanilla JS). The daemon is a bundled file at `daemon/dist/index.cjs` (single line).
+The dashboard is a single-file SPA at `daemon/dist/dashboard.html` (~9000 lines, vanilla JS). The daemon is a bundled file at `daemon/dist/index.cjs` (single line).
 
 **Editing dashboard.html** is straightforward — it's readable HTML/CSS/JS. Search for function names or HTML patterns.
 
@@ -695,7 +695,9 @@ $.post("/api/new-route", D("Description", async (t, e) => {
 }));
 ```
 
-**CRITICAL:** Any changes to `index.cjs` or `dashboard.html` require a daemon restart to take effect. Batch all changes, warn the user, restart as the final command.
+**Restarts:** `dashboard.html` is re-read whenever its file changes, so dashboard edits go live on the next page load with no restart. Changes to `index.cjs` (or `daemon/.env`) DO require a daemon restart: batch all changes, warn the user, restart as the final command.
+
+**Voice dictation** lives in the dashboard under `// ── Voice dictation`. It streams the microphone to the `spawn-voice` project (`/spawn-voice/ws`, local whisper.cpp) and starts that project through `POST /api/projects/spawn-voice/start` when needed. Details: `projects/spawn-voice/CLAUDE.md`.
 
 ---
 
@@ -753,4 +755,9 @@ sudo -u postgres psql scws_daemon -c "SELECT name, port, status FROM projects;"
 # Port conflict
 pm2 jlist | jq '.[].pm2_env.PORT'    # Check PM2 ports
 ss -tlnp | grep '50[0-9][0-9]'       # Check listening ports
+
+# Voice dictation not working
+# - dashboard must be on HTTPS, and nginx must send Permissions-Policy microphone=(self)
+curl -s http://127.0.0.1:5049/health  # spawn-voice up? (start it from the dashboard or the daemon API)
+pm2 logs scws-spawn-voice --lines 50
 ```

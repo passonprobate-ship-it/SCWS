@@ -6226,8 +6226,8 @@ const HELP_TOPICS = [
     icon: "📄", title: "Pages Reference",
     desc: "What each dashboard page does",
     detail: `<div class="help-page-ref">
-      <div class="help-page-item"><strong>Terminal <span class="help-kbd">Ctrl+J</span></strong><span>Interactive Claude AI terminal. Run prompts, execute tasks, and let Claude work on your projects autonomously.</span></div>
-      <div class="help-page-item"><strong>Sessions</strong><span>View and resume previous Claude sessions. See prompts, outputs, duration, and session history.</span></div>
+      <div class="help-page-item"><strong>Terminal <span class="help-kbd">Ctrl+J</span></strong><span>Interactive Claude AI terminal. Run prompts, execute tasks, and let Claude work on your projects autonomously. Supports copy/paste (including pasting or dropping images) and voice dictation (hold Ctrl to talk). Sessions survive dropped connections: the dashboard reconnects on its own and replays what you missed.</span></div>
+      <div class="help-page-item"><strong>Sessions</strong><span>View and resume previous Claude and OpenCode sessions. See prompts, outputs, duration, and session history. Every session terminal supports the same copy/paste and voice dictation as the main Terminal.</span></div>
       <div class="help-page-item"><strong>Projects <span class="help-kbd">Ctrl+1</span></strong><span>Project dashboard — create, start, stop, build, and deploy projects. View logs, manage settings, and run Claude sessions per project.</span></div>
       <div class="help-page-item"><strong>System <span class="help-kbd">Ctrl+2</span></strong><span>System health monitor — CPU, memory, disk, temperature, uptime, and PM2 process status at a glance.</span></div>
       <div class="help-page-item"><strong>Activity <span class="help-kbd">Ctrl+3</span></strong><span>Timeline of all actions — project creates, builds, deployments, starts, stops, and system events.</span></div>
@@ -6236,7 +6236,7 @@ const HELP_TOPICS = [
       <div class="help-page-item"><strong>Cortex <span class="help-kbd">Ctrl+6</span></strong><span>Scheduler and automation — cron jobs, webhook ingress endpoints, and the Cortex orchestration engine.</span></div>
       <div class="help-page-item"><strong>Editor</strong><span>Full code editor powered by Monaco (VS Code engine). Browse all projects in the file tree, open multiple files in tabs, and edit with syntax highlighting for 50+ languages.<br><br><strong>Saving files:</strong> Press <strong>Ctrl+S</strong> to save the active file. Changes are written directly to disk on the server via the API. Unsaved changes are indicated by an amber dot (●) on the file tab. If you try to close a tab with unsaved changes, you'll be prompted to confirm. Save is manual only — nothing is auto-saved, so always Ctrl+S before switching away.<br><br>Open from the sidebar to browse all projects, or click <strong>Edit</strong> on any project card to jump directly into that project's files. Use <strong>Ctrl+P</strong> to quick-search files and <strong>Ctrl+W</strong> to close tabs.</span></div>
       <div class="help-page-item"><strong>Files <span class="help-kbd">Ctrl+7</span></strong><span>File browser — navigate the server filesystem, view and edit files, upload and download.</span></div>
-      <div class="help-page-item"><strong>Connections <span class="help-kbd">Ctrl+8</span></strong><span>External service connections — GitHub repos, API integrations, and linked accounts.</span></div>
+      <div class="help-page-item"><strong>Connections <span class="help-kbd">Ctrl+8</span></strong><span>External service connections — GitHub repos, API integrations, and linked accounts. Includes a Tailscale panel: this node's IP and MagicDNS name, every device on your tailnet with online status, and Connect/Disconnect buttons.</span></div>
       <div class="help-page-item"><strong>VPS <span class="help-kbd">Ctrl+9</span></strong><span>Manage VPS deploy targets — view remote servers, deploy projects to external infrastructure.</span></div>
       <div class="help-page-item"><strong>Funnel</strong><span>Tailscale Funnel — expose projects publicly through Tailscale's reverse proxy without port forwarding.</span></div>
       <div class="help-page-item"><strong>Android</strong><span>Android development — SDK status, ADB device management, build history, and settings for building and deploying APKs to connected Android devices.</span></div>
@@ -6260,6 +6260,14 @@ const HELP_TOPICS = [
       <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">9</span></td><td>Go to VPS</td></tr>
       <tr><td><span class="help-kbd">?</span></td><td>Go to Help</td></tr>
       <tr><td><span class="help-kbd">Esc</span></td><td>Close modal / command palette</td></tr>
+      <tr><td colspan="2" style="padding:8px 0 4px;color:var(--accent);font-weight:600;">Terminal Shortcuts (main terminal and every session)</td></tr>
+      <tr><td>Select text</td><td>Copies automatically</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">Shift</span> + <span class="help-kbd">C</span></td><td>Copy selection</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">Insert</span></td><td>Copy selection (use this on Windows Chrome/Edge, where Ctrl+Shift+C opens DevTools)</td></tr>
+      <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">V</span></td><td>Paste text, or paste an image (uploaded to SPAWN and its path typed in)</td></tr>
+      <tr><td>Right-click</td><td>Paste (HTTPS only; on plain HTTP use Ctrl+V)</td></tr>
+      <tr><td>Hold <span class="help-kbd">Ctrl</span></td><td>Voice dictation, push-to-talk (release to stop)</td></tr>
+      <tr><td>Double-tap <span class="help-kbd">Ctrl</span></td><td>Voice dictation, locked on (double-tap again to stop)</td></tr>
       <tr><td colspan="2" style="padding:8px 0 4px;color:var(--accent);font-weight:600;">Editor Shortcuts (when on Editor page)</td></tr>
       <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">S</span></td><td>Save current file</td></tr>
       <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">P</span></td><td>Quick file finder (search across project)</td></tr>
@@ -6267,6 +6275,27 @@ const HELP_TOPICS = [
       <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">Tab</span></td><td>Cycle to next tab</td></tr>
       <tr><td><span class="help-kbd">Ctrl</span> + <span class="help-kbd">Shift</span> + <span class="help-kbd">Tab</span></td><td>Cycle to previous tab</td></tr>
     </table>`
+  },
+  {
+    icon: "🎙️", title: "Voice Dictation",
+    desc: "Talk instead of type, in any terminal",
+    detail: `<div class="help-section">
+      <h3>How to use it</h3>
+      <ul>
+        <li><strong>Hold Ctrl</strong> (about a third of a second) to talk. Release to stop.</li>
+        <li><strong>Double-tap Ctrl</strong> to keep listening hands-free. Double-tap again to stop.</li>
+        <li>Ctrl used together with another key or a click (Ctrl+C, Ctrl+V…) never starts dictation.</li>
+      </ul>
+      <p>Your words show live in a small overlay at the top of the terminal. Each finished phrase is typed into the terminal you're looking at (the main Terminal or any session) <strong>without pressing Enter</strong>, so you can fix words with the keyboard before sending. The overlay never takes focus, so the keyboard and mouse keep working while you talk.</p>
+      <h3>Private and works in any browser</h3>
+      <p>Speech is turned into text on SPAWN itself by the <code>spawn-voice</code> project (whisper.cpp). Audio never leaves the machine, and it works in Chrome, Edge, Brave and Firefox. The first time you dictate, SPAWN starts the voice engine for you (a few seconds). The idle watchdog stops it again when it isn't being used.</p>
+      <h3>Requirements</h3>
+      <ul>
+        <li>Open the dashboard over <strong>HTTPS</strong> (for example through Tailscale Serve). Browsers only allow the microphone on secure pages.</li>
+        <li>Allow microphone access when the browser asks.</li>
+        <li>The <code>spawn-voice</code> project must be set up on this SPAWN. If dictation says the voice engine isn't installed, run <code>bash /var/www/scws/projects/spawn-voice/setup.sh</code> or ask Claude to set it up.</li>
+      </ul>
+    </div>`
   },
   {
     icon: "💡", title: "Quick Tips",
@@ -6284,6 +6313,14 @@ const HELP_TOPICS = [
       <p>Click <strong>Editor</strong> in the sidebar to browse all projects, or click the <strong>Edit</strong> button on any project card. The editor supports multi-tab editing, syntax highlighting for 50+ languages, and Ctrl+P to quickly find files. Changes are saved manually with Ctrl+S.</p>
       <h3>Set up notifications</h3>
       <p>Go to Channels (Ctrl+5) to configure email or webhook notifications for build completions, errors, and other events.</p>
+      <h3>Dictate a prompt</h3>
+      <p>In any terminal, hold Ctrl and speak, or double-tap Ctrl to keep listening. The text is typed in for you to check before you press Enter. See <strong>Voice Dictation</strong>.</p>
+      <h3>Share a browser with Claude</h3>
+      <p>Start the <code>spawn-browser</code> project and open <code>/browser</code>. You and the AI agents see and control the same Chromium window, with the same tabs and logins. Handy for logging in somewhere once and letting Claude carry on.</p>
+      <h3>Starting and stopping projects</h3>
+      <p>Only the SPAWN core starts at boot. Start projects when you need them from Projects, or just ask Claude. The idle watchdog stops projects that aren't being used. That's normal, not a crash.</p>
+      <h3>Lost connection?</h3>
+      <p>Terminal sessions keep running on the server. The dashboard reconnects on its own and shows what happened while you were away. Sessions you leave open don't time out. A session you close the tab on is kept for 10 minutes so you can come back to it.</p>
     </div>`
   },
   {
@@ -6294,7 +6331,7 @@ const HELP_TOPICS = [
       <ul>
         <li>Ubuntu 20.04, 22.04, or 24.04 (amd64 or arm64)</li>
         <li>Runs on VPS, bare metal, or Raspberry Pi</li>
-        <li>1 GB RAM minimum, 2+ GB recommended</li>
+        <li>2 GB RAM minimum, 4+ GB recommended</li>
       </ul>
       <h3>Tech Stack</h3>
       <ul>

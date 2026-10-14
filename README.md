@@ -133,7 +133,7 @@ If something breaks, it reads the logs, diagnoses the issue, fixes it, and redep
 /var/www/scws/
 ├── daemon/                   ← Control plane (Express 5, port 4000)
 │   ├── dist/index.cjs        ← Built daemon bundle
-│   ├── dist/dashboard.html   ← Web dashboard SPA (single-file, ~8100 lines)
+│   ├── dist/dashboard.html   ← Web dashboard SPA (single-file, ~9000 lines)
 │   ├── .env                  ← DATABASE_URL, DASHBOARD_TOKEN, etc.
 │   └── ecosystem.config.cjs  ← PM2 config with heap caps
 ├── projects/                 ← AI-created projects live here
@@ -164,7 +164,7 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 
 | Page | Shortcut | Description |
 |------|----------|-------------|
-| Terminal | `Ctrl+J` | Interactive AI terminal — type prompts and watch it work |
+| Terminal | `Ctrl+J` | Interactive AI terminal — type or dictate prompts and watch it work |
 | Sessions | — | View and resume previous AI sessions (Claude and OpenCode) |
 | Projects | `Ctrl+1` | Search, sort, grid/list views, create, start, stop, build, deploy |
 | System | `Ctrl+2` | CPU, memory, disk, temperature, PM2 process status |
@@ -178,6 +178,33 @@ The web dashboard is a single-file SPA at `http://<host>/` providing full contro
 | Android | — | Android SDK status, wireless ADB device management, APK builds |
 | Network | — | WiFi scanning, netplan config, Tailscale Funnel |
 | `Ctrl+K` | | Command palette |
+
+### Terminal
+
+Every terminal in the dashboard (the main Terminal and each Claude/OpenCode session) works the same way:
+
+- **Copy**: select text (copies automatically), `Ctrl+Shift+C`, or `Ctrl+Insert` (for Windows Chrome/Edge, where `Ctrl+Shift+C` opens DevTools)
+- **Paste**: `Ctrl+V`, or right-click on HTTPS. Pasting or dropping an image uploads it to SPAWN and types its path in, so the AI can look at it.
+- **Voice dictation**: hold `Ctrl` to talk, or double-tap `Ctrl` to keep listening (see below)
+- **Stays connected**: sessions keep running on the server. If your connection drops, the dashboard reconnects on its own and replays the output you missed. Open sessions don't time out (set `TERMINAL_IDLE_TIMEOUT_MIN` in `daemon/.env` to bring the timeout back). A session whose tab you close is kept for 10 minutes.
+
+### Voice Dictation
+
+Talk to the AI instead of typing. **Hold Ctrl** for push-to-talk, or **double-tap Ctrl** to lock listening on (double-tap again to stop). Ctrl pressed with another key or a click never starts dictation. Your words appear live in an overlay. Each finished phrase is typed into the terminal **without pressing Enter**, so you can check and fix it before sending.
+
+Speech is transcribed on the SPAWN machine itself by the `spawn-voice` project ([whisper.cpp](https://github.com/ggerganov/whisper.cpp), `base.en` model). Audio never leaves the box, and it works in every major browser, including Brave and Firefox. The dashboard starts the voice engine on first use, and the idle watchdog stops it again.
+
+Requirements:
+- The dashboard must be opened over **HTTPS** (for example with Tailscale Serve). Browsers block the microphone on plain HTTP.
+- One-time setup on each instance (builds whisper.cpp for your CPU and downloads the model):
+  ```bash
+  bash /var/www/scws/projects/spawn-voice/setup.sh
+  ```
+  Then register it as a project (or ask the AI to). See `projects/spawn-voice/CLAUDE.md`.
+
+### Shared Browser
+
+The optional `spawn-browser` project runs one Chromium window on a virtual display. You watch and control it at `http://<host>/browser` (noVNC), and AI agents drive the same window through the Chrome DevTools Protocol. You share tabs, cookies and logins, so you can sign in to a site once and let the AI carry on from there.
 
 ## Tech Stack
 

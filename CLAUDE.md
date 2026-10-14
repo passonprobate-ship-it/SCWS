@@ -39,7 +39,7 @@ You don't suggest code for the user to copy-paste. You write it to disk, build i
 /var/www/scws/
 ├── daemon/              ← The control plane (Express 5, port 4000)
 │   ├── dist/index.cjs   ← Built daemon bundle
-│   ├── dist/dashboard.html ← Web dashboard SPA (~8500 lines)
+│   ├── dist/dashboard.html ← Web dashboard SPA (~9000 lines, hot-reloaded)
 │   ├── .env             ← DATABASE_URL, DASHBOARD_TOKEN, etc.
 │   └── ecosystem.config.cjs ← PM2 config
 ├── projects/            ← Your creations live here
@@ -73,7 +73,7 @@ SPAWN/
 │   ├── onboarding.ts    ← First-run wizard
 │   ├── logger.ts        ← Timestamped log() helper
 │   ├── asyncHandler.ts  ← Express async route error wrapper
-│   └── dashboard.html   ← Single-file SPA (vanilla JS, 8500+ lines, 16+ pages)
+│   └── dist/dashboard.html ← Single-file SPA (vanilla JS, ~9000 lines, 16+ pages; hand-edited, not bundled)
 └── script/build.ts      ← esbuild bundler
 ```
 
@@ -223,10 +223,10 @@ Every new project must complete ALL of these steps:
 - Database changes (migrations, new databases, schema updates)
 - Installing npm packages in project directories
 - Restarting individual project processes (`pm2 restart <project-name>`)
+- Editing `daemon/dist/dashboard.html` — re-read on change, live on next page load
 
 ### When restart IS needed (rare, daemon-code-only changes)
 - Modified `daemon/dist/index.cjs` (the daemon bundle)
-- Modified `daemon/dist/dashboard.html` (served by daemon)
 - Changed `daemon/.env` (environment variables)
 - Changed `daemon/ecosystem.config.cjs` (PM2 config for daemon)
 
