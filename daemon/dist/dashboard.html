@@ -2755,7 +2755,8 @@ function _voiceStart(mode) {
   const target = _voiceResolveTarget();
   if (!target) return; // no terminal on screen — bare Ctrl does nothing
   if (!window.isSecureContext) { toast("Voice input needs HTTPS — open https://spawn.tail852587.ts.net:8443/", "error", 6000); return; }
-  if (!SR) { toast("Voice input needs Chrome or Edge", "error", 4000); return; }
+  // Brave exposes the API but ships without Google's speech service, so it always fails with "network"
+  if (!SR || navigator.brave) { toast("Voice input needs Chrome or Edge (Brave and Firefox don't include a speech service)", "error", 6000); return; }
   if (_voice.run && _voice.run.rec) { try { _voice.run.rec.abort(); } catch {} }
 
   const rec = new SR();
