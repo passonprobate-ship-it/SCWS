@@ -1388,6 +1388,8 @@
       <div id="pm2-processes" class="mt-8"></div>
       <div class="subtitle mt-20">Watchdog</div>
       <div id="watchdog-section" class="mt-8"></div>
+      <div class="subtitle mt-20">Hale <span style="font-weight:400;color:var(--text-muted);font-size:11px;">keeps this server current and healthy</span></div>
+      <div id="hale-section" class="mt-8"></div>
     </div>
 
     <!-- Activity Page -->
@@ -4817,6 +4819,7 @@ async function loadSystem() {
     // Load PM2 processes + watchdog + network + memory chart + timezone
     loadPM2Processes();
     loadWatchdog();
+    loadHale();
     loadNetworkStatus().then(() => renderNetworkCards());
     loadTimezone();
   } catch (err) {
@@ -4843,6 +4846,81 @@ async function loadPM2Processes() {
       </tbody>
     </table>`;
   } catch { /* ignore */ }
+}
+
+// ── Hale ─────────────────────────────────────────────────────────
+let haleTimer = null;
+const HALE_EVENT_LABEL = { kept: "kept", "rolled-back": "rolled back", failed: "failed", stuck: "STUCK", "needs-human": "needs a person",
+  healed: "healed", "run-end": "run finished", "run-start": "run started", heartbeat: "all-clear sent", recovered: "recovered", retired: "retired" };
+
+async function loadHale() {
+  const el = document.getElementById("hale-section");
+  if (!el) return;
+  let d;
+  try { d = await api("/api/hale"); }
+  catch (e) { el.innerHTML = `<div class="card" style="font-size:12px;color:var(--text-muted);">Hale status unavailable: ${escapeHtml(e.message)}</div>`; return; }
+  if (!d.installed) {
+    el.innerHTML = `<div class="card" style="font-size:12px;color:var(--text-muted);">Hale is not installed on this machine.</div>`;
+    return;
+  }
+  const running = (d.running || []).length > 0;
+  const sum = d.summary || {};
+  const overall = sum.overall || "unknown";
+  const overallText = { current: "Current", update: "Updates waiting", "newer-line": "Current (newer lines exist)", urgent: "Urgent", attention: "Needs you", unknown: "Not checked yet" }[overall] || overall;
+  const overallColor = { current: "var(--green)", "newer-line": "var(--green)", update: "var(--amber)", urgent: "var(--red)", attention: "var(--red)" }[overall] || "var(--text-muted)";
+  const lr = d.last_run;
+  const lrText = lr ? `${escapeHtml(lr.result)} &middot; ${new Date(lr.time).toLocaleString()}` : "never";
+  const timer = (t) => { const x = (d.timers || {})[t] || {}; return `<span style="color:${x.enabled === "enabled" ? "var(--green)" : "var(--text-muted)"}">${x.enabled === "enabled" ? "on" : "off"}</span>`; };
+  const alerts = (d.open_alerts || []).map(a => `<div style="color:var(--red);font-size:12px;">&#9888; ${escapeHtml(a.title)}</div>`).join("");
+  const units = (d.units || []).map(u => `<div style="font-size:12px;">&middot; ${escapeHtml(u.title)} <span style="color:var(--text-muted);">(${escapeHtml(u.action)})</span></div>`).join("")
+    || `<div style="font-size:12px;color:var(--text-muted);">Nothing waiting.</div>`;
+  const recent = (d.recent || []).filter(e => e.event !== "apply" && e.event !== "run-start").slice(-8).reverse().map(e =>
+    `<div style="font-size:11px;font-family:var(--mono, monospace);color:var(--text-muted);">${new Date(e.time).toLocaleString()} &nbsp;<span style="color:${["failed","stuck","needs-human"].includes(e.event) ? "var(--red)" : "var(--text)"}">${escapeHtml(HALE_EVENT_LABEL[e.event] || e.event)}</span> ${escapeHtml(e.unit || e.result || "")}${e.reason ? " &mdash; " + escapeHtml(e.reason.slice(0, 120)) : ""}</div>`).join("");
+  el.innerHTML = `
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+        <div>
+          <span style="font-weight:600;color:${overallColor};">${escapeHtml(overallText)}</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Hale ${escapeHtml(d.version || "")} &middot; mode ${escapeHtml(d.mode || "?")} &middot; last run: ${lrText}</span>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-sm btn-primary" id="hale-run-btn" onclick="haleAction('run')" ${running ? "disabled" : ""} title="Upgrade now, one tested unit at a time. Never reboots.">${running ? "Running…" : "&#9654; Run Hale now"}</button>
+          <button class="btn btn-sm" onclick="haleAction('heal')" ${running ? "disabled" : ""} title="Restart failed services, clean a full disk, renew certificates">Heal</button>
+          <button class="btn btn-sm" onclick="toggleHaleReport()" title="The plain-language how-far-behind report">Report</button>
+        </div>
+      </div>
+      ${alerts ? `<div style="margin-bottom:8px;">${alerts}</div>` : ""}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">WAITING</div>${units}</div>
+        <div><div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">RECENT</div>${recent || '<div style="font-size:12px;color:var(--text-muted);">No activity yet.</div>'}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Timers: heal every 15 min ${timer("hale-heal")} &middot; daily security ${timer("hale-security")} &middot; weekly run ${timer("hale-run")}${running ? ` &middot; <span style="color:var(--amber);">running: ${escapeHtml(d.running.join(", "))}</span>` : ""}</div>
+      <pre id="hale-report" style="display:none;margin-top:10px;max-height:420px;overflow:auto;font-size:11px;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px;"></pre>
+    </div>`;
+  clearTimeout(haleTimer);
+  if (running) haleTimer = setTimeout(() => { if (document.getElementById("page-system")?.classList.contains("active")) loadHale(); }, 5000);
+}
+
+async function haleAction(action) {
+  if (action === "run") {
+    const ok = await showConfirm("Run Hale now? It upgrades whatever is waiting, one tested unit at a time, and rolls back anything that fails its tests. It never reboots from this button. Services may restart briefly.");
+    if (!ok) return;
+  }
+  try {
+    await api(`/api/hale/${action}`, { method: "POST" });
+    toast(action === "run" ? "Hale run started" : "Hale heal started", "success");
+    setTimeout(loadHale, 1500);
+  } catch (e) { toast("Hale: " + e.message, "error"); }
+}
+
+async function toggleHaleReport() {
+  const pre = document.getElementById("hale-report");
+  if (!pre) return;
+  if (pre.style.display !== "none") { pre.style.display = "none"; return; }
+  pre.style.display = "block";
+  pre.textContent = "Building the report…";
+  try { pre.textContent = (await api("/api/hale/report")).text; }
+  catch (e) { pre.textContent = "Could not build the report: " + e.message; }
 }
 
 async function loadWatchdog() {

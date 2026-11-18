@@ -1349,6 +1349,46 @@ app.post("/api/system/quick-action", asyncHandler("System quick action", async (
   }
 }));
 
+// ── Hale (self-upgrading server agent, github.com/passonprobate-ship-it/hale) ──
+// Optional: on instances without Hale these answer { installed: false }. Hale runs as root under
+// systemd, so the dashboard only reads its status and asks systemd to start its services; a run
+// keeps going even if the daemon restarts. The run-now service never reboots the machine.
+
+const HALE_BIN = "/usr/local/bin/hale";
+const HALE_ACTIONS: Record<string, string> = {
+  run: "hale-run-now.service",   // hale run --now --no-reboot
+  heal: "hale-heal.service",     // hale heal --quiet
+};
+
+app.get("/api/hale", asyncHandler("Hale status", async (_req, res) => {
+  if (!existsSync(HALE_BIN)) { res.json({ installed: false }); return; }
+  try {
+    const { stdout } = await execFileAsync("sudo", ["-n", HALE_BIN, "status", "--json"], { timeout: 30_000 });
+    res.json(JSON.parse(stdout));
+  } catch (e: any) {
+    res.status(500).json({ installed: true, error: "could not read Hale status" });
+  }
+}));
+
+app.get("/api/hale/report", asyncHandler("Hale report", async (_req, res) => {
+  if (!existsSync(HALE_BIN)) { res.status(404).json({ error: "Hale is not installed" }); return; }
+  try {
+    const { stdout } = await execFileAsync("sudo", ["-n", HALE_BIN, "report", "--cached"], { timeout: 90_000, maxBuffer: 2 * 1024 * 1024 });
+    res.json({ text: stdout });
+  } catch (e: any) {
+    res.status(500).json({ error: "could not build the Hale report" });
+  }
+}));
+
+app.post("/api/hale/:action", asyncHandler("Hale action", async (req, res) => {
+  const unit = HALE_ACTIONS[String(req.params.action)];
+  if (!unit) { res.status(400).json({ error: "unknown Hale action" }); return; }
+  if (!existsSync(HALE_BIN)) { res.status(404).json({ error: "Hale is not installed" }); return; }
+  await execFileAsync("sudo", ["-n", "systemctl", "start", "--no-block", unit], { timeout: 15_000 });
+  await storage.logActivity({ action: "hale_" + req.params.action, details: `Started ${unit} from the dashboard` });
+  res.json({ ok: true, started: unit });
+}));
+
 // Individual system action routes (called by dashboard quick action buttons)
 app.post("/api/system/restart-nginx", asyncHandler("Restart nginx", async (_req, res) => {
   await execFileAsync("sudo", ["nginx", "-s", "reload"], { timeout: 10_000 });
